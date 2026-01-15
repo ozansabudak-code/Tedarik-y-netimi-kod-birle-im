@@ -924,7 +924,7 @@ def init_rek_detailed_report_tab():
         btn_pdf.pack(side="right", padx=5)
 
         tree_frame = tk.Frame(tab_detay); tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        cols = ["☑", "Tedarikçi", "Order No", "Takım", "Parti No", "Stok Adı", "Fiş No", "Fiş Tarihi", "Müş. Gecikme", "Sip. Gecikme", "On Time Mik.", "Geciken Mik.", "İade Mik.", "İade Tutar", "Rek. Mik.", "Rek. Tutar", "Net Mik.", "Rek. Oranı"]
+        cols = ["☑", "Tedarikçi", "Order No", "Takım", "Parti No", "Stok Adı", "Fiş No", "Fiş Tarihi", "Müş. Gecikme", "Sip. Gecikme", "Kesilmesi Gereken Ceza", "On Time Mik.", "Geciken Mik.", "İade Mik.", "İade Tutar", "Rek. Mik.", "Rek. Tutar", "Net Mik.", "Rek. Oranı"]
         tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=15)
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview); hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -934,7 +934,7 @@ def init_rek_detailed_report_tab():
         for c in cols:
             tree.heading(c, text=c)
             if c == "☑": tree.column(c, anchor="center", width=40)
-            elif "Mik" in c or "Oran" in c or "Tutar" in c or "Gecikme" in c: tree.column(c, anchor="e", width=85)
+            elif "Mik" in c or "Oran" in c or "Tutar" in c or "Gecikme" in c or "Ceza" in c: tree.column(c, anchor="e", width=85)
             else: tree.column(c, anchor="w", width=120)
         
         # Checkbox durumlarını saklayacak dictionary
@@ -1005,8 +1005,17 @@ def init_rek_detailed_report_tab():
                 total_risk = row["Iade_Tutari"] + row["Reklamasyon_Tutari"]
                 oran = (total_risk / row["Alim_Tutari"] * 100) if row["Alim_Tutari"] > 0 else 0
                 s_gec = int(row["Siparis_Gecikme"]); m_gec = int(row["Musteri_Gecikme"])
+                
+                # Ceza hesaplama
+                ceza_orani = 0.0
+                if s_gec > 0:
+                    if s_gec < 7: ceza_orani = 0.05
+                    elif 7 <= s_gec <= 15: ceza_orani = 0.10
+                    else: ceza_orani = 0.25
+                ceza_tutari = (row["Alim_Tutari"] - row["Iade_Tutari"]) * ceza_orani
 
                 vals = ('☐', row["Cari Adı"], row["Order No"], row["Order Grup Adı"], row["Parti/Lab No"], row["Stok Adı"], row["Sipariş Fişi Fiş No"], row["Fiş_Tarihi_Str"], m_gec, s_gec,
+                        f"₺{ceza_tutari:,.0f}",
                         f"{row['On_Time_Miktar']:,.0f}", f"{row['Geciken_Miktar']:,.0f}", f"{row['Iade_Edilen_Miktar']:,.0f}", f"{row['Iade_Tutari']:,.0f}",
                         f"{row['Reklamasyon_Miktar']:,.0f}", f"{row['Reklamasyon_Tutari']:,.0f}", f"{net_mik:,.0f}", f"%{oran:.2f}")
                 tags = []
@@ -1069,6 +1078,14 @@ def init_rek_detailed_report_tab():
             # Seçili kayıt sayısı
             tk.Label(content, text=f"✓ Seçili Kayıt: {len(selected_data)}", font=("Segoe UI", 10, "bold"), bg="#ecf0f1", fg="#27ae60").pack(anchor="w", pady=(0,10))
             
+            # Mail adresi girişi
+            mail_frame = tk.Frame(content, bg="#ecf0f1")
+            mail_frame.pack(fill="x", pady=(0,10))
+            tk.Label(mail_frame, text="📧 Alıcı Email:", font=("Segoe UI", 10, "bold"), bg="#ecf0f1").pack(side="left", padx=(0,10))
+            email_entry = ttk.Entry(mail_frame, width=40, font=("Segoe UI", 10))
+            email_entry.pack(side="left", padx=5)
+            email_entry.insert(0, GMAIL_RECEIVER_LOGS if GMAIL_RECEIVER_LOGS else "")
+            
             # Mail taslağı text alanı
             tk.Label(content, text="Mail Taslağı:", font=("Segoe UI", 10, "bold"), bg="#ecf0f1").pack(anchor="w", pady=(10,5))
             text_frame = tk.Frame(content)
@@ -1077,7 +1094,7 @@ def init_rek_detailed_report_tab():
             text_scroll = ttk.Scrollbar(text_frame)
             text_scroll.pack(side="right", fill="y")
             
-            draft_text = tk.Text(text_frame, wrap="word", font=("Segoe UI", 10), yscrollcommand=text_scroll.set, height=20)
+            draft_text = tk.Text(text_frame, wrap="word", font=("Segoe UI", 10), yscrollcommand=text_scroll.set, height=15)
             draft_text.pack(side="left", fill="both", expand=True)
             text_scroll.config(command=draft_text.yview)
             
@@ -1093,6 +1110,55 @@ def init_rek_detailed_report_tab():
                 root.clipboard_append(draft_text.get("1.0", "end-1c"))
                 messagebox.showinfo("Başarılı", "Mail taslağı panoya kopyalandı!")
             
+            def send_email_now():
+                """Mail'i hemen gönder"""
+                recipient = email_entry.get().strip()
+                if not recipient:
+                    messagebox.showwarning("Uyarı", "Lütfen alıcı email adresi girin!")
+                    return
+                
+                if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+                    messagebox.showerror("Hata", "Email ayarları yapılandırılmamış!")
+                    return
+                
+                try:
+                    # Mail içeriğini al
+                    mail_body = draft_text.get("1.0", "end-1c")
+                    
+                    # Konu satırını belirle
+                    lines = mail_body.split('\n')
+                    subject = "Reklamasyon Sorumlu Ataması"
+                    for line in lines:
+                        if line.startswith("Konu:"):
+                            subject = line.replace("Konu:", "").strip()
+                            break
+                    
+                    # Email gönder
+                    msg = MIMEMultipart()
+                    msg['From'] = GMAIL_USER
+                    msg['To'] = recipient
+                    msg['Subject'] = subject
+                    msg.attach(MIMEText(mail_body, 'plain', 'utf-8'))
+                    
+                    server = smtplib.SMTP('smtp.gmail.com', 587)
+                    server.starttls()
+                    server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                    server.send_message(msg)
+                    server.quit()
+                    
+                    # LOG
+                    if activity_logger:
+                        activity_logger.log_email_sent(recipient, subject, "Rek Detaylı Rapor")
+                    
+                    messagebox.showinfo("Başarılı", f"Mail başarıyla gönderildi!\nAlıcı: {recipient}")
+                    draft_window.destroy()
+                    
+                except Exception as e:
+                    messagebox.showerror("Hata", f"Mail gönderilemedi:\n{str(e)}")
+                    if activity_logger:
+                        activity_logger.log_error(f"Mail gönderim hatası: {str(e)}", "Rek Detaylı Rapor")
+            
+            tk.Button(btn_frame, text="📧 Mail Gönder", bg="#e74c3c", fg="white", font=("Segoe UI", 10, "bold"), padx=20, pady=8, command=send_email_now).pack(side="left", padx=5)
             tk.Button(btn_frame, text="📋 Panoya Kopyala", bg="#3498db", fg="white", font=("Segoe UI", 10), padx=20, pady=8, command=copy_to_clipboard).pack(side="left", padx=5)
             tk.Button(btn_frame, text="✖ Kapat", bg="#95a5a6", fg="white", font=("Segoe UI", 10), padx=20, pady=8, command=draft_window.destroy).pack(side="right", padx=5)
             
