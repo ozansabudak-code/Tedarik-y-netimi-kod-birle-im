@@ -911,6 +911,15 @@ def init_trend_hunter_tab():
 
     ttk.Button(left_panel, text="🌍 Gerçek Verileri Tara (Google Trends)", command=fetch_real_trends).pack(fill="x", pady=10)
     status_lbl.pack()
+    
+    # Aksiyon Butonları (Sol panelde, Gerçek Verileri Tara butonunun altında - Sabit konumda kalır)
+    action_frame_left = tk.Frame(left_panel, bg="white")
+    action_frame_left.pack(fill="x", pady=15)
+    
+    tk.Label(action_frame_left, text="🎯 Hızlı Aksiyonlar", font=("Segoe UI", 11, "bold"), fg="#2c3e50", bg="white").pack(anchor="w", pady=(0,5))
+    
+    ttk.Button(action_frame_left, text="📦 Kumaş Stoğunu Kontrol Et", command=lambda: show_page("Akıllı Sipariş")).pack(fill="x", pady=3)
+    ttk.Button(action_frame_left, text="🏭 Üretime Emir Ver (Draft)", command=lambda: messagebox.showinfo("ERP", "Üretim emri ERP sistemine taslak olarak girildi.")).pack(fill="x", pady=3)
 
     # 2. SAĞ PANEL: Grafik ve AI Analizi
     right_panel = tk.Frame(content, bg="white", padx=20, pady=10)
@@ -928,13 +937,6 @@ def init_trend_hunter_tab():
     ai_text.pack(fill="both", expand=True)
     ai_text.insert("1.0", "Veri bekleniyor... Simülasyon veya gerçek veri butonuna basın.")
     ai_text.config(state="disabled")
-
-    # Aksiyon Butonları
-    action_frame = tk.Frame(right_panel, bg="white")
-    action_frame.pack(fill="x", pady=10)
-    
-    ttk.Button(action_frame, text="🏭 Üretime Emir Ver (Draft)", command=lambda: messagebox.showinfo("ERP", "Üretim emri ERP sistemine taslak olarak girildi.")).pack(side="right", padx=5)
-    ttk.Button(action_frame, text="📦 Kumaş Stoğunu Kontrol Et", command=lambda: show_page("Akıllı Sipariş")).pack(side="right", padx=5)
 
     # --- Yardımcı Fonksiyon: Grafik Çizme ---
     def update_trend_chart(dates, data_dict):
