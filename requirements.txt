@@ -1,0 +1,12 @@
+tkinter
+ttkthemes
+pandas
+matplotlib
+requests
+Pillow
+fpdf
+python-docx
+openpyxl
+watchdog
+rapidfuzz
+numpy
