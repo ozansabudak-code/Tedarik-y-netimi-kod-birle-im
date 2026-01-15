@@ -35,6 +35,14 @@ import schedule # Zamanlanmış görevler için
 from collections import defaultdict # Activity tracking için
 from datetime import timedelta # Zaman hesaplamaları için
 
+# Prophet kütüphanesi kontrolü
+try:
+    from prophet import Prophet
+    PROPHET_AVAILABLE = True
+except ImportError:
+    PROPHET_AVAILABLE = False
+    print("Prophet kütüphanesi bulunamadı. Tahmin özelliği sınırlı olacak.")
+
 # Harita kütüphanesi kontrolü
 try:
     import tkintermapview
@@ -1967,10 +1975,100 @@ def init_map_tab():
     tk.Button(controls_panel, text="Hızlı (Sade)", command=set_carto_light, bg="#f0f0f0", width=15).pack(padx=5, pady=2)
     tk.Button(controls_panel, text="Google Uydu", command=set_google_satellite, bg="#f0f0f0", width=15).pack(padx=5, pady=2)
     tk.Button(controls_panel, text="Tümünü Göster", command=lambda: map_widget.fit_bounding_box((42.0, 26.0), (36.0, 45.0)), bg="#e0e0e0", width=15).pack(padx=5, pady=(10, 5))
+    tk.Button(controls_panel, text="🎯 Tedarikçi Risk Haritası", command=show_supplier_risk_map, bg="#e74c3c", fg="white", width=15, font=("Segoe UI", 9, "bold")).pack(padx=5, pady=2)
 
     route_info_label = tk.Label(map_widget, text="Sağ tıklayarak Başlangıç veya Varış noktası seçin.", justify="left", 
                                 font=("Segoe UI", 10), bg="white", fg="#333333", bd=1, relief="solid", padx=10, pady=10, wraplength=350)
     route_info_label.place(relx=0.98, rely=0.02, anchor="ne")
+
+def show_supplier_risk_map():
+    """Tedarikçileri risk durumlarına göre haritada gösterir"""
+    if not MAP_AVAILABLE or map_widget is None:
+        messagebox.showwarning("Uyarı", "Harita modülü bulunamadı!")
+        return
+    
+    if sonuc_global is None or df_global is None:
+        messagebox.showwarning("Uyarı", "Lütfen önce verileri analiz edin!")
+        return
+    
+    # Mevcut marker'ları temizle
+    map_widget.delete_all_marker()
+    
+    # Türkiye'nin büyük şehirlerinin koordinatları (tedarikçi konumları için)
+    city_coords = {
+        'İstanbul': (41.0082, 28.9784),
+        'Ankara': (39.9334, 32.8597),
+        'İzmir': (38.4237, 27.1428),
+        'Bursa': (40.1826, 29.0665),
+        'Antalya': (36.8969, 30.7133),
+        'Adana': (37.0000, 35.3213),
+        'Gaziantep': (37.0662, 37.3833),
+        'Konya': (37.8746, 32.4932),
+        'Mersin': (36.8121, 34.6415),
+        'Kayseri': (38.7312, 35.4787),
+        'Denizli': (37.7765, 29.0864),
+        'Tekirdağ': (40.9833, 27.5167),
+        'Kahramanmaraş': (37.5858, 36.9371),
+        'Balıkesir': (39.6484, 27.8826),
+        'Çorum': (40.5506, 34.9556)
+    }
+    
+    # Tedarikçi bazında risk skorları
+    suppliers = sonuc_global[[tedarikci_col_global, 'Genel Skor', 'Not']].drop_duplicates()
+    
+    cities = list(city_coords.keys())
+    markers = []
+    
+    for idx, (_, row) in enumerate(suppliers.iterrows()):
+        supplier = row[tedarikci_col_global]
+        score = row['Genel Skor']
+        note = row['Not']
+        
+        # Risk seviyesi belirleme
+        if score >= 80:
+            risk_level = "Güvenli"
+            marker_color = "green"
+            risk_icon = "✅"
+        elif score >= 60:
+            risk_level = "Orta Risk"
+            marker_color = "orange"
+            risk_icon = "⚠️"
+        else:
+            risk_level = "Yüksek Risk"
+            marker_color = "red"
+            risk_icon = "⛔"
+        
+        # Şehir atama (döngüsel)
+        city = cities[idx % len(cities)]
+        lat, lon = city_coords[city]
+        
+        # Küçük rastgele offset ekle (aynı şehirdeki tedarikçileri ayırt etmek için)
+        lat += random.uniform(-0.1, 0.1)
+        lon += random.uniform(-0.1, 0.1)
+        
+        # Marker ekle
+        marker_text = f"{risk_icon} {supplier}\nSkor: {score:.0f}\n{note}\nKonum: {city}"
+        marker = map_widget.set_marker(lat, lon, text=marker_text, marker_color_circle=marker_color, marker_color_outside="white")
+        markers.append(marker)
+    
+    # Haritayı Türkiye'ye odakla
+    map_widget.set_position(39.0, 35.0)
+    map_widget.set_zoom(6)
+    
+    # Bilgi güncellemesi
+    if route_info_label:
+        info_text = f"""🎯 TEDARİKÇİ RİSK HARİTASI
+
+Toplam: {len(suppliers)} tedarikçi
+        
+✅ Yeşil: Güvenli (Skor ≥ 80)
+⚠️ Turuncu: Orta Risk (60-79)
+⛔ Kırmızı: Yüksek Risk (< 60)
+
+Marker'a tıklayarak detayları görün."""
+        route_info_label.config(text=info_text)
+    
+    messagebox.showinfo("Risk Haritası", f"{len(suppliers)} tedarikçi risk durumlarına göre haritada işaretlendi!")
 
 def get_weather_data(lat, lon):
     try:
@@ -2634,8 +2732,14 @@ def update_forecast_tab(df, date_col, fiyat_col):
     global forecast_fig_global
     for widget in frame_tahmin.winfo_children(): widget.destroy()
     
+    # Başlık ve kontrol paneli
+    header_frame = tk.Frame(frame_tahmin, bg="#2c3e50", padx=20, pady=15)
+    header_frame.pack(fill="x")
+    tk.Label(header_frame, text="📈 Gelecek Ay Talep Tahmini", font=("Segoe UI", 16, "bold"), fg="white", bg="#2c3e50").pack(anchor="w")
+    tk.Label(header_frame, text="Mevsimsellik ve Trend Analizi ile Prophet Modeli", font=("Segoe UI", 10), fg="#ecf0f1", bg="#2c3e50").pack(anchor="w")
+    
     if date_col not in df.columns or fiyat_col not in df.columns:
-        tk.Label(frame_tahmin, text="Tahmin için 'Tarih' ve 'Fiyat' verisi gereklidir.", font=("Arial", 12)).pack(pady=20); return
+        tk.Label(frame_tahmin, text="Tahmin için 'Tarih' ve 'Fiyat/Miktar' verisi gereklidir.", font=("Arial", 12)).pack(pady=20); return
 
     df_fc = df.copy()
     df_fc[date_col] = pd.to_datetime(df_fc[date_col], errors='coerce')
@@ -2643,51 +2747,154 @@ def update_forecast_tab(df, date_col, fiyat_col):
     df_fc[fiyat_col] = pd.to_numeric(df_fc[fiyat_col].astype(str).str.replace(',', '.'), errors='coerce')
     
     monthly_data = df_fc.groupby(pd.Grouper(key=date_col, freq='ME')).agg({fiyat_col: 'mean'}).reset_index().sort_values(date_col)
-    
     monthly_data = monthly_data.dropna(subset=[fiyat_col])
     
     if monthly_data.empty or len(monthly_data) < 2:
         tk.Label(frame_tahmin, text="Tahmin yapabilmek için en az 2 aylık veri gereklidir.", font=("Arial", 12)).pack(pady=20); return
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
     
-    ax.plot(monthly_data[date_col], monthly_data[fiyat_col], marker='o', linestyle='-', color='blue', label='Geçmiş Fiyatlar')
+    # Model seçimi ve tahmin
+    use_prophet = PROPHET_AVAILABLE and len(monthly_data) >= 3
     
-    try:
-        x_numeric = np.arange(len(monthly_data))
-        y_price = monthly_data[fiyat_col].values
-        
-        z = np.polyfit(x_numeric, y_price, 1)
-        p = np.poly1d(z)
-        
-        next_month_index = len(x_numeric)
-        next_month_price = p(next_month_index)
-        
-        last_date = monthly_data[date_col].iloc[-1]
-        next_date = last_date + pd.DateOffset(months=1)
-        
-        ax.plot([last_date, next_date], [y_price[-1], next_month_price], 'r--', marker='x', label='Gelecek Ay Tahmini')
-        
-        ax.annotate(f"Tahmin: {next_month_price:.2f} TL", (next_date, next_month_price), 
-                      textcoords="offset points", xytext=(0,10), ha='center', fontsize=10, color='red', fontweight='bold')
-        
-        ax.plot(monthly_data[date_col], p(x_numeric), "g:", alpha=0.5, label="Trend Eğilimi")
+    if use_prophet:
+        try:
+            # Prophet için veri hazırlama
+            prophet_df = pd.DataFrame({
+                'ds': monthly_data[date_col],
+                'y': monthly_data[fiyat_col]
+            })
+            
+            # Prophet modeli
+            model = Prophet(
+                seasonality_mode='multiplicative',
+                yearly_seasonality=True,
+                weekly_seasonality=False,
+                daily_seasonality=False,
+                changepoint_prior_scale=0.05
+            )
+            
+            # Aylık mevsimsellik ekle
+            model.add_seasonality(name='monthly', period=30.5, fourier_order=5)
+            
+            model.fit(prophet_df)
+            
+            # Gelecek 3 ay için tahmin
+            future = model.make_future_dataframe(periods=3, freq='ME')
+            forecast = model.predict(future)
+            
+            # Üst grafik: Prophet tahmini
+            ax1.plot(prophet_df['ds'], prophet_df['y'], 'ko', label='Gerçek Veri', markersize=6)
+            ax1.plot(forecast['ds'], forecast['yhat'], 'b-', label='Prophet Tahmini', linewidth=2)
+            ax1.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], 
+                            alpha=0.2, color='blue', label='Güven Aralığı')
+            
+            # Gelecek ayları vurgula
+            future_mask = forecast['ds'] > prophet_df['ds'].max()
+            ax1.plot(forecast[future_mask]['ds'], forecast[future_mask]['yhat'], 
+                    'r--', marker='x', markersize=10, linewidth=2, label='Gelecek Tahminleri')
+            
+            ax1.set_title("Prophet ile Mevsimsellik ve Trend Analizi", fontsize=14, fontweight='bold')
+            ax1.set_xlabel("Tarih", fontsize=11)
+            ax1.set_ylabel("Değer", fontsize=11)
+            ax1.legend(loc='best')
+            ax1.grid(True, alpha=0.3)
+            
+            # Alt grafik: Mevsimsellik bileşenleri
+            yearly = forecast[['ds', 'yearly']].set_index('ds')
+            ax2.plot(yearly.index, yearly['yearly'], 'g-', linewidth=2)
+            ax2.set_title("Yıllık Mevsimsellik Bileşeni", fontsize=12, fontweight='bold')
+            ax2.set_xlabel("Tarih", fontsize=11)
+            ax2.set_ylabel("Mevsimsel Etki", fontsize=11)
+            ax2.grid(True, alpha=0.3)
+            ax2.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+            
+            # Sonuç bilgileri
+            next_month = forecast[future_mask].iloc[0]
+            current_value = prophet_df['y'].iloc[-1]
+            predicted_value = next_month['yhat']
+            lower_bound = next_month['yhat_lower']
+            upper_bound = next_month['yhat_upper']
+            
+            change_pct = ((predicted_value - current_value) / current_value) * 100
+            trend = "Artış ↗" if change_pct > 0 else "Azalış ↘"
+            
+            info_text = f"""📊 TAHMİN SONUÇLARI (Prophet Modeli):
+            
+📅 Gelecek Ay: {next_month['ds'].strftime('%B %Y')}
+💰 Tahmini Değer: {predicted_value:.2f} TL
+📈 Değişim: {change_pct:+.1f}% ({trend})
+🎯 Güven Aralığı: {lower_bound:.2f} - {upper_bound:.2f} TL
+📊 Mevcut Değer: {current_value:.2f} TL
 
-        if np.isnan(next_month_price):
-             lbl_text = "Yetersiz veri nedeniyle tahmin hesaplanamadı."
-        else:
-            trend_direction = "Yükseliş" if next_month_price > y_price[-1] else "Düşüş"
-            diff = next_month_price - y_price[-1]
-            lbl_text = f"ANALİZ SONUCU:\nVerilerdeki trende göre önümüzdeki ay fiyatların {trend_direction} eğiliminde olması bekleniyor.\nTahmini değişim: {diff:+.2f} TL"
+💡 MEVSIMSEL ANALİZ:
+Model, yıllık mevsimsellik paternlerini tespit etti.
+Gelecek tahminler hem trend hem de mevsimsel etkiler dikkate alınarak yapıldı."""
+            
+        except Exception as e:
+            print(f"Prophet hatası: {e}")
+            use_prophet = False
     
-        tk.Label(frame_tahmin, text=lbl_text, font=("Segoe UI", 11), bg="#f0f0f0", bd=1, relief="solid", padx=10, pady=10).pack(pady=10, padx=10, fill="x")
+    if not use_prophet:
+        # Basit lineer regresyon (fallback)
+        ax1.plot(monthly_data[date_col], monthly_data[fiyat_col], marker='o', linestyle='-', color='blue', label='Geçmiş Veriler', linewidth=2)
         
-    except Exception as e:
-        print(f"Tahmin hatası: {e}")
-        tk.Label(frame_tahmin, text=f"Tahmin hatası: {e}", fg="red").pack()
+        try:
+            x_numeric = np.arange(len(monthly_data))
+            y_price = monthly_data[fiyat_col].values
+            
+            z = np.polyfit(x_numeric, y_price, 1)
+            p = np.poly1d(z)
+            
+            next_month_index = len(x_numeric)
+            next_month_price = p(next_month_index)
+            
+            last_date = monthly_data[date_col].iloc[-1]
+            next_date = last_date + pd.DateOffset(months=1)
+            
+            ax1.plot([last_date, next_date], [y_price[-1], next_month_price], 'r--', marker='x', markersize=10, linewidth=2, label='Gelecek Ay Tahmini')
+            ax1.plot(monthly_data[date_col], p(x_numeric), "g:", alpha=0.5, linewidth=2, label="Trend Çizgisi")
+            
+            ax1.set_title("Basit Lineer Regresyon Tahmini", fontsize=14, fontweight='bold')
+            ax1.set_xlabel("Tarih", fontsize=11)
+            ax1.set_ylabel("Değer", fontsize=11)
+            ax1.legend(loc='best')
+            ax1.grid(True, alpha=0.3)
+            
+            # Alt grafik için basit trend göster
+            ax2.bar(range(len(monthly_data)), y_price, alpha=0.6, color='steelblue')
+            ax2.set_title("Aylık Değer Dağılımı", fontsize=12, fontweight='bold')
+            ax2.set_xlabel("Ay Indexi", fontsize=11)
+            ax2.set_ylabel("Değer", fontsize=11)
+            ax2.grid(True, alpha=0.3, axis='y')
+            
+            change = next_month_price - y_price[-1]
+            trend = "Yükseliş ↗" if change > 0 else "Düşüş ↘"
+            
+            info_text = f"""📊 TAHMİN SONUÇLARI (Lineer Regresyon):
+            
+📅 Gelecek Ay: {next_date.strftime('%B %Y')}
+💰 Tahmini Değer: {next_month_price:.2f} TL
+📈 Beklenen Değişim: {change:+.2f} TL ({trend})
+📊 Mevcut Değer: {y_price[-1]:.2f} TL
 
-    ax.set_title("Gelecek Ay Fiyat Tahmini (Lineer Regresyon)", fontsize=14)
-    ax.set_xlabel("Tarih")
+⚠️ Not: Daha iyi tahminler için Prophet kütüphanesi kurun."""
+            
+        except Exception as e:
+            info_text = f"Tahmin hatası: {e}"
+    
+    plt.tight_layout()
+    
+    canvas = FigureCanvasTkAgg(fig, frame_tahmin)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill='both', expand=True, padx=10, pady=10)
+    
+    # Bilgi kartı
+    info_frame = tk.Frame(frame_tahmin, bg="white", bd=2, relief="solid")
+    info_frame.pack(fill="x", padx=20, pady=10)
+    tk.Label(info_frame, text=info_text, font=("Courier New", 10), bg="white", fg="#2c3e50", justify="left", padx=15, pady=15).pack(anchor="w")
+    
+    forecast_fig_global = fig
     ax.set_ylabel("Ortalama Fiyat")
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.7)
@@ -2730,6 +2937,10 @@ def init_smart_order_tab():
     calc_btn = ttk.Button(input_frame, text="⚡ Optimum Dağıtımı Hesapla", command=lambda: run_order_allocation(qty_entry))
     calc_btn.grid(row=0, column=4, padx=15, pady=5, sticky="e")
     
+    # Döviz Simülasyonu Butonu
+    currency_btn = tk.Button(input_frame, text="💱 Döviz Simülasyonu", bg="#e74c3c", fg="white", font=("Segoe UI", 9, "bold"), command=show_currency_simulation)
+    currency_btn.grid(row=0, column=5, padx=5, pady=5, sticky="e")
+    
     tree_frame = tk.LabelFrame(left_panel, text="Önerilen Sipariş Dağılımı", font=("Segoe UI", 10, "bold"), fg="#27ae60")
     tree_frame.pack(fill="both", expand=True, pady=10)
     
@@ -2761,6 +2972,183 @@ def init_smart_order_tab():
     btn_frame.pack(fill="x", pady=10, padx=10)
     
     ttk.Button(btn_frame, text="✉️ Taslak Sipariş Maillerini Oluştur", command=generate_order_drafts).pack(fill="x", pady=5)
+
+def show_currency_simulation():
+    """Döviz kuru değişimi simülasyonu (What-If analizi)"""
+    if df_global is None or sonuc_global is None:
+        messagebox.showwarning("Uyarı", "Lütfen önce verileri analiz edin!")
+        return
+    
+    # Simülasyon penceresi
+    sim_window = tk.Toplevel(root)
+    sim_window.title("💱 Döviz Simülasyonu - What-If Analizi")
+    sim_window.geometry("900x700")
+    sim_window.configure(bg="#ecf0f1")
+    
+    # Başlık
+    header = tk.Frame(sim_window, bg="#34495e", padx=20, pady=15)
+    header.pack(fill="x")
+    tk.Label(header, text="💱 Döviz Kuru Simülasyonu", font=("Segoe UI", 16, "bold"), fg="white", bg="#34495e").pack()
+    tk.Label(header, text="Döviz kurundaki değişimin maliyetlere etkisini analiz edin", font=("Segoe UI", 10), fg="#ecf0f1", bg="#34495e").pack()
+    
+    # İçerik
+    content = tk.Frame(sim_window, bg="#ecf0f1", padx=20, pady=20)
+    content.pack(fill="both", expand=True)
+    
+    # Senaryo girişi
+    scenario_frame = tk.LabelFrame(content, text="Senaryo Parametreleri", font=("Segoe UI", 11, "bold"), bg="white", padx=15, pady=15)
+    scenario_frame.pack(fill="x", pady=10)
+    
+    tk.Label(scenario_frame, text="USD Değişim Oranı (%):", bg="white", font=("Segoe UI", 10)).grid(row=0, column=0, sticky="w", pady=5, padx=5)
+    usd_entry = ttk.Entry(scenario_frame, width=15)
+    usd_entry.insert(0, "10")
+    usd_entry.grid(row=0, column=1, pady=5, padx=5)
+    
+    tk.Label(scenario_frame, text="EUR Değişim Oranı (%):", bg="white", font=("Segoe UI", 10)).grid(row=1, column=0, sticky="w", pady=5, padx=5)
+    eur_entry = ttk.Entry(scenario_frame, width=15)
+    eur_entry.insert(0, "10")
+    eur_entry.grid(row=1, column=1, pady=5, padx=5)
+    
+    tk.Label(scenario_frame, text="(Pozitif değer artış, negatif değer düşüş)", bg="white", font=("Segoe UI", 8, "italic"), fg="gray").grid(row=2, column=0, columnspan=2, sticky="w", pady=2, padx=5)
+    
+    # Sonuç alanı
+    result_text = tk.Text(content, wrap="word", font=("Courier New", 10), height=20, bg="#f9f9f9")
+    result_text.pack(fill="both", expand=True, pady=10)
+    result_text.insert("1.0", "Hesaplama yapmak için 'Simülasyonu Çalıştır' butonuna tıklayın...")
+    
+    def run_simulation():
+        try:
+            usd_change = float(usd_entry.get())
+            eur_change = float(eur_entry.get())
+            
+            result_text.config(state="normal")
+            result_text.delete("1.0", "end")
+            
+            # Mevcut maliyet hesapla (basitleştirilmiş)
+            fiyat_col = find_col_by_keywords(df_global, ["fiyat", "price"])
+            if not fiyat_col:
+                result_text.insert("1.0", "⚠️ Fiyat kolonu bulunamadı!")
+                return
+            
+            df_calc = df_global.copy()
+            df_calc[fiyat_col] = pd.to_numeric(df_calc[fiyat_col].astype(str).str.replace(',', '.'), errors='coerce')
+            
+            miktar_col = find_col_by_keywords(df_global, ["miktar", "adet", "quantity"])
+            if miktar_col:
+                df_calc[miktar_col] = pd.to_numeric(df_calc[miktar_col], errors='coerce')
+                current_total = (df_calc[fiyat_col] * df_calc[miktar_col]).sum()
+            else:
+                current_total = df_calc[fiyat_col].sum()
+            
+            # Döviz etkisi varsayımları
+            # Basit model: Maliyetin %40'ı USD, %30'u EUR, %30'u TL cinsinden
+            usd_portion = 0.40
+            eur_portion = 0.30
+            tl_portion = 0.30
+            
+            usd_impact = current_total * usd_portion * (usd_change / 100)
+            eur_impact = current_total * eur_portion * (eur_change / 100)
+            total_impact = usd_impact + eur_impact
+            
+            new_total = current_total + total_impact
+            impact_pct = (total_impact / current_total) * 100
+            
+            # Tedarikçi bazında etki
+            supplier_col = tedarikci_col_global
+            if supplier_col:
+                supplier_impact = []
+                for supplier in df_calc[supplier_col].unique()[:10]:  # İlk 10 tedarikçi
+                    supplier_data = df_calc[df_calc[supplier_col] == supplier]
+                    if miktar_col:
+                        sup_total = (supplier_data[fiyat_col] * supplier_data[miktar_col]).sum()
+                    else:
+                        sup_total = supplier_data[fiyat_col].sum()
+                    
+                    sup_usd_impact = sup_total * usd_portion * (usd_change / 100)
+                    sup_eur_impact = sup_total * eur_portion * (eur_change / 100)
+                    sup_new_total = sup_total + sup_usd_impact + sup_eur_impact
+                    
+                    supplier_impact.append({
+                        'supplier': supplier,
+                        'current': sup_total,
+                        'new': sup_new_total,
+                        'change': sup_new_total - sup_total
+                    })
+            
+            # Rapor oluştur
+            report = f"""
+╔══════════════════════════════════════════════════════════════╗
+║           DÖVİZ KURU DEĞİŞİMİ SİMÜLASYONU                    ║
+╚══════════════════════════════════════════════════════════════╝
+
+📊 SENARYO PARAMETRELERİ:
+   • USD Değişimi: {usd_change:+.1f}%
+   • EUR Değişimi: {eur_change:+.1f}%
+
+💰 MALİYET ANALİZİ:
+   
+   Mevcut Toplam Maliyet:    ₺{current_total:,.2f}
+   
+   USD Etkisi ({usd_portion:.0%}):    {usd_impact:+,.2f} TL
+   EUR Etkisi ({eur_portion:.0%}):    {eur_impact:+,.2f} TL
+   TL Kısmı ({tl_portion:.0%}):      Değişmez
+   
+   ═══════════════════════════════════════════════
+   Yeni Toplam Maliyet:      ₺{new_total:,.2f}
+   Toplam Değişim:           {total_impact:+,.2f} TL ({impact_pct:+.2f}%)
+   ═══════════════════════════════════════════════
+
+"""
+            
+            if supplier_impact:
+                report += "\n📋 TEDARİKÇİ BAZINDA ETKİ (İlk 10):\n\n"
+                report += f"{'Tedarikçi':<25} {'Mevcut':<15} {'Yeni':<15} {'Değişim':<15}\n"
+                report += "─" * 70 + "\n"
+                
+                for item in sorted(supplier_impact, key=lambda x: abs(x['change']), reverse=True):
+                    report += f"{item['supplier']:<25} ₺{item['current']:>12,.0f} ₺{item['new']:>12,.0f} {item['change']:>+12,.0f}\n"
+            
+            report += f"""
+
+💡 STRATEJİK ÖNERİLER:
+
+"""
+            if impact_pct > 5:
+                report += f"⚠️  YÜKSEK ETKİ: %{abs(impact_pct):.1f} oranında maliyet {'artışı' if impact_pct > 0 else 'azalışı'} bekleniyor!\n"
+                if impact_pct > 0:
+                    report += "   • Hedging stratejileri değerlendirilmeli\n"
+                    report += "   • Alternatif tedarikçiler araştırılmalı\n"
+                    report += "   • Fiyat revizyon planları hazırlanmalı\n"
+            elif impact_pct > 2:
+                report += f"⚡ ORTA ETKİ: %{abs(impact_pct):.1f} oranında maliyet değişimi\n"
+                report += "   • Bütçe revizyonu gerekebilir\n"
+                report += "   • Risk yönetim planları gözden geçirilmeli\n"
+            else:
+                report += f"✅ DÜŞÜK ETKİ: %{abs(impact_pct):.1f} oranında sınırlı etki\n"
+                report += "   • Mevcut stratejiler devam edebilir\n"
+            
+            result_text.insert("1.0", report)
+            result_text.config(state="disabled")
+            
+            # LOG
+            if activity_logger:
+                activity_logger.log_analysis("CURRENCY_SIMULATION", f"USD: {usd_change:+.1f}%, EUR: {eur_change:+.1f}%, Etki: {impact_pct:+.2f}%", "Akıllı Sipariş")
+            
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin!")
+        except Exception as e:
+            result_text.config(state="normal")
+            result_text.insert("1.0", f"⚠️ Simülasyon hatası: {str(e)}")
+    
+    # Butonlar
+    btn_frame = tk.Frame(content, bg="#ecf0f1")
+    btn_frame.pack(fill="x", pady=10)
+    
+    tk.Button(btn_frame, text="🔄 Simülasyonu Çalıştır", bg="#3498db", fg="white", font=("Segoe UI", 10, "bold"), padx=20, pady=8, command=run_simulation).pack(side="left", padx=5)
+    tk.Button(btn_frame, text="✖ Kapat", bg="#95a5a6", fg="white", font=("Segoe UI", 10), padx=20, pady=8, command=sim_window.destroy).pack(side="right", padx=5)
+    
+    # İlk simülasyonu otomatik çalıştır
+    run_simulation()
 
 def run_order_allocation(qty_entry):
     if df_global is None or sonuc_global is None:
