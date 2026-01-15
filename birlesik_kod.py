@@ -648,46 +648,63 @@ def init_news_tab():
     fetch_and_display_news(scrollable_frame)
 
 def fetch_and_display_news(parent_frame):
-    """Google News RSS'den tekstil haberlerini çeker."""
+    """Google News RSS'den tekstil haberlerini çeker (ARKA PLANDA - DONMA YAPMAZ)."""
+    # Önceki içeriği temizle
     for widget in parent_frame.winfo_children(): widget.destroy()
     
+    # Yükleniyor mesajı
     loading = tk.Label(parent_frame, text="Haberler yükleniyor...", font=("Segoe UI", 12), bg="#ecf0f1")
     loading.pack(pady=20)
-    parent_frame.update()
     
-    # Tekstil, hazır giyim, kumaş haberlerine odaklı güncel RSS
-    rss_url = "https://news.google.com/rss/search?q=tekstil+OR+hazır+giyim+OR+kumaş+OR+konfeksiyon+OR+iplik+when:7d&hl=tr&gl=TR&ceid=TR:tr"
+    # --- ARKA PLAN İŞLEMİ ---
+    def _bg_task():
+        rss_url = "https://news.google.com/rss/search?q=tekstil+OR+hazır+giyim+OR+kumaş+OR+konfeksiyon+OR+iplik+when:7d&hl=tr&gl=TR&ceid=TR:tr"
+        try:
+            # Timeout süresini kısalttık (5 saniye)
+            response = requests.get(rss_url, timeout=5)
+            xml_content = response.content
+            # Veri geldi, arayüzü güncellemek için ana thread'e sinyal gönder
+            root.after(0, lambda: _update_ui(xml_content))
+        except Exception as e:
+            # Hata varsa ekrana yazdır
+            error_msg = f"Bağlantı hatası (VPN deneyin): {str(e)[:50]}..."
+            root.after(0, lambda: loading.config(text=error_msg, fg="red"))
+            # Activity logger'a kaydet
+            activity_logger.log_error(f"News RSS hatası: {str(e)}", "Sektör Haberleri")
+
+    # --- ARAYÜZ GÜNCELLEME ---
+    def _update_ui(xml_data):
+        try:
+            loading.destroy()
+            root_xml = ET.fromstring(xml_data)
+            count = 0
+            for item in root_xml.findall('./channel/item'):
+                if count > 15: break # Max 15 haber
+                
+                title = item.find('title').text
+                link = item.find('link').text
+                pubDate = item.find('pubDate').text
+                
+                # Haber Kartı
+                card = tk.Frame(parent_frame, bg="white", bd=1, relief="solid", padx=15, pady=10)
+                card.pack(fill="x", pady=5, padx=5)
+                
+                # Başlık (Linkli)
+                lbl_title = tk.Label(card, text=title, font=("Segoe UI", 11, "bold"), fg="#2980b9", bg="white", cursor="hand2", wraplength=900, justify="left")
+                lbl_title.pack(anchor="w")
+                lbl_title.bind("<Button-1>", lambda e, url=link: webbrowser.open_new(url))
+                
+                # Tarih
+                tk.Label(card, text=f"📅 {pubDate}", font=("Arial", 9), fg="gray", bg="white").pack(anchor="w")
+                
+                count += 1
+        except Exception as e:
+            # XML parse hatası
+            loading.config(text=f"Haberler işlenemedi: {str(e)[:50]}...", fg="red")
+            activity_logger.log_error(f"News XML parse hatası: {str(e)}", "Sektör Haberleri")
     
-    try:
-        response = requests.get(rss_url, timeout=10)
-        root = ET.fromstring(response.content)
-        
-        loading.destroy()
-        
-        count = 0
-        for item in root.findall('./channel/item'):
-            if count > 15: break # Max 15 haber
-            
-            title = item.find('title').text
-            link = item.find('link').text
-            pubDate = item.find('pubDate').text
-            
-            # Haber Kartı
-            card = tk.Frame(parent_frame, bg="white", bd=1, relief="solid", padx=15, pady=10)
-            card.pack(fill="x", pady=5, padx=5)
-            
-            # Başlık (Linkli)
-            lbl_title = tk.Label(card, text=title, font=("Segoe UI", 11, "bold"), fg="#2980b9", bg="white", cursor="hand2", wraplength=900, justify="left")
-            lbl_title.pack(anchor="w")
-            lbl_title.bind("<Button-1>", lambda e, url=link: webbrowser.open_new(url))
-            
-            # Tarih
-            tk.Label(card, text=f"📅 {pubDate}", font=("Arial", 9), fg="gray", bg="white").pack(anchor="w")
-            
-            count += 1
-            
-    except Exception as e:
-        loading.config(text=f"Haberler alınamadı: {str(e)}", fg="red")
+    # Thread'i başlat (daemon=True: ana program kapanınca otomatik sonlanır)
+    threading.Thread(target=_bg_task, daemon=True).start()
 
 # ---------- TREND AVCISI (TREND HUNTER) FONKSİYONLARI ----------
 def init_trend_hunter_tab():
