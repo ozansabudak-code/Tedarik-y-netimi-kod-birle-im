@@ -43,6 +43,14 @@ except ImportError:
     PROPHET_AVAILABLE = False
     print("Prophet kütüphanesi bulunamadı. Tahmin özelliği sınırlı olacak.")
 
+# Pytrends kütüphanesi kontrolü (Trend Avcısı için)
+try:
+    from pytrends.request import TrendReq
+    PYTRENDS_AVAILABLE = True
+except ImportError:
+    PYTRENDS_AVAILABLE = False
+    print("Pytrends kütüphanesi bulunamadı. Trend Avcısı gerçek veri çekemeyecek.")
+
 # Harita kütüphanesi kontrolü
 try:
     import tkintermapview
@@ -680,6 +688,222 @@ def fetch_and_display_news(parent_frame):
             
     except Exception as e:
         loading.config(text=f"Haberler alınamadı: {str(e)}", fg="red")
+
+# ---------- TREND AVCISI (TREND HUNTER) FONKSİYONLARI ----------
+def init_trend_hunter_tab():
+    """Dijital İkiz & Trend Avcısı Sekmesi"""
+    global frame_trend_hunter
+    
+    # Mevcut widgetları temizle
+    for widget in frame_trend_hunter.winfo_children(): widget.destroy()
+
+    # --- Başlık ---
+    header = tk.Frame(frame_trend_hunter, bg="#8e44ad", padx=20, pady=20)
+    header.pack(fill="x")
+    tk.Label(header, text="🔮 Trend Avcısı & Dijital İkiz", font=("Segoe UI", 18, "bold"), fg="white", bg="#8e44ad").pack(side="left")
+    tk.Label(header, text="Sosyal Medya ve Arama Motoru Sinyalleri ile Erken Uyarı Sistemi", font=("Segoe UI", 10), fg="#f3e5f5", bg="#8e44ad").pack(side="left", padx=10)
+
+    # --- Ana İçerik ---
+    content = tk.PanedWindow(frame_trend_hunter, orient=tk.HORIZONTAL)
+    content.pack(fill="both", expand=True, pady=10)
+
+    # 1. SOL PANEL: Veri Girişi ve Kontrol
+    left_panel = tk.Frame(content, bg="white", padx=10, pady=10)
+    content.add(left_panel, width=400)
+
+    tk.Label(left_panel, text="📡 Sinyal Takip Parametreleri", font=("Segoe UI", 12, "bold"), fg="#2c3e50", bg="white").pack(anchor="w", pady=10)
+    
+    tk.Label(left_panel, text="Takip Edilecek Anahtar Kelimeler (Virgülle ayırın):", bg="white").pack(anchor="w")
+    keywords_entry = ttk.Entry(left_panel, width=40)
+    keywords_entry.insert(0, "Oversize Gömlek, Lila Elbise, Keten Pantolon")
+    keywords_entry.pack(fill="x", pady=5)
+
+    tk.Label(left_panel, text="Bölge / Platform:", bg="white").pack(anchor="w", pady=(10,0))
+    platform_combo = ttk.Combobox(left_panel, values=["Google Arama (TR)", "Google Arama (Global)", "Instagram (Simülasyon)", "TikTok (Simülasyon)"], state="readonly")
+    platform_combo.set("Google Arama (TR)")
+    platform_combo.pack(fill="x", pady=5)
+
+    # -- Simülasyon Alanı --
+    sim_frame = tk.LabelFrame(left_panel, text="⚡ Senaryo Simülasyonu", bg="#f3e5f5", fg="#8e44ad", padx=10, pady=10)
+    sim_frame.pack(fill="x", pady=20)
+    
+    tk.Label(sim_frame, text="Pazar akşamı aniden patlayan bir trendi simüle et:", bg="#f3e5f5", wraplength=350).pack(anchor="w")
+    
+    # Status label tanımını burada yapalım (closure için)
+    status_lbl = tk.Label(left_panel, text="Hazır", fg="gray", bg="white")
+    
+    def simulate_viral_trend():
+        """Simülasyon: Pazar akşamı 'Lila Oversize Gömlek' patlıyor"""
+        trend_data = {
+            "Lila Oversize Gömlek": [12, 15, 14, 18, 22, 85, 98], # Son gün patlama
+            "Normal Gömlek": [45, 46, 44, 45, 47, 48, 46]         # Stabil
+        }
+        # Son 7 günün tarihlerini oluştur
+        dates = [(datetime.datetime.now() - timedelta(days=i)).strftime("%d.%m") for i in range(6, -1, -1)]
+        
+        update_trend_chart(dates, trend_data)
+        
+        # AI Analizini Tetikle
+        analyze_trend_with_ai("Lila Oversize Gömlek", 98, is_simulation=True)
+
+    ttk.Button(sim_frame, text="🔥 'Lila Gömlek' Viral Oldu! (Simüle Et)", command=simulate_viral_trend).pack(fill="x", pady=5)
+    
+    # -- Gerçek Veri Butonu --
+    def fetch_real_trends():
+        if not PYTRENDS_AVAILABLE:
+            messagebox.showerror("Hata", "pytrends kütüphanesi eksik. Lütfen 'pip install pytrends' yapın.")
+            return
+            
+        keywords = [k.strip() for k in keywords_entry.get().split(",")]
+        # Google Trends max 5 kelime kabul eder
+        if len(keywords) > 5:
+            keywords = keywords[:5]
+            messagebox.showinfo("Bilgi", "Google Trends limiti nedeniyle ilk 5 kelime alındı.")
+
+        if not keywords: return
+
+        try:
+            status_lbl.config(text="Google Trends verileri çekiliyor... Lütfen bekleyin.")
+            left_panel.update() # UI'ı güncelle
+            
+            # Google Trends Bağlantısı
+            pytrends = TrendReq(hl='tr-TR', tz=180)
+            pytrends.build_payload(keywords, cat=0, timeframe='now 7-d', geo='TR', gprop='')
+            data = pytrends.interest_over_time()
+            
+            if not data.empty:
+                # Tarih formatı
+                dates = [d.strftime("%d.%m") for d in data.index]
+                # Chart için veri hazırlığı
+                chart_data = {col: data[col].tolist() for col in keywords}
+                
+                update_trend_chart(dates, chart_data)
+                
+                # En çok artanı bul
+                last_row = data.iloc[-1]
+                top_trend = last_row.idxmax()
+                current_score = last_row.max()
+                
+                analyze_trend_with_ai(top_trend, current_score, is_simulation=False)
+            else:
+                messagebox.showinfo("Bilgi", "Bu kelimeler için yeterli veri bulunamadı.")
+                
+            status_lbl.config(text="Veri çekildi.")
+            
+        except Exception as e:
+            messagebox.showerror("Hata", f"Google Trends bağlantı hatası:\n{str(e)}\n(Google çok sık istekte bloklayabilir)")
+            status_lbl.config(text="Hata oluştu.")
+
+    ttk.Button(left_panel, text="🌍 Gerçek Verileri Tara (Google Trends)", command=fetch_real_trends).pack(fill="x", pady=10)
+    status_lbl.pack()
+
+    # 2. SAĞ PANEL: Grafik ve AI Analizi
+    right_panel = tk.Frame(content, bg="white", padx=20, pady=10)
+    content.add(right_panel)
+
+    # Grafik Alanı
+    chart_frame = tk.Frame(right_panel, bg="white", height=350)
+    chart_frame.pack(fill="x", expand=False)
+    
+    # AI Sonuç Alanı
+    ai_frame = tk.LabelFrame(right_panel, text="🤖 Dijital İkiz Karar Mekanizması (Gemini AI)", font=("Segoe UI", 12, "bold"), bg="white", fg="#2980b9", padx=15, pady=15)
+    ai_frame.pack(fill="both", expand=True, pady=10)
+    
+    ai_text = tk.Text(ai_frame, wrap="word", font=("Segoe UI", 10), bg="#fdfefe", height=10, bd=0)
+    ai_text.pack(fill="both", expand=True)
+    ai_text.insert("1.0", "Veri bekleniyor... Simülasyon veya gerçek veri butonuna basın.")
+    ai_text.config(state="disabled")
+
+    # Aksiyon Butonları
+    action_frame = tk.Frame(right_panel, bg="white")
+    action_frame.pack(fill="x", pady=10)
+    
+    ttk.Button(action_frame, text="🏭 Üretime Emir Ver (Draft)", command=lambda: messagebox.showinfo("ERP", "Üretim emri ERP sistemine taslak olarak girildi.")).pack(side="right", padx=5)
+    ttk.Button(action_frame, text="📦 Kumaş Stoğunu Kontrol Et", command=lambda: show_page("Akıllı Sipariş")).pack(side="right", padx=5)
+
+    # --- Yardımcı Fonksiyon: Grafik Çizme ---
+    def update_trend_chart(dates, data_dict):
+        for widget in chart_frame.winfo_children(): widget.destroy()
+        
+        fig = plt.figure(figsize=(8, 4), dpi=100)
+        ax = fig.add_subplot(111)
+        
+        for label, values in data_dict.items():
+            # Eğer son değer önceki ortalamadan %30 fazlaysa çizgiyi kalınlaştır (Trend Alarmı)
+            avg = sum(values[:-1]) / len(values[:-1]) if len(values) > 1 else 0
+            if avg == 0: avg = 1
+            
+            is_trending = values[-1] > avg * 1.3
+            width = 3 if is_trending else 1.5
+            style = '-' if is_trending else '--'
+            
+            ax.plot(dates, values, marker='o', linewidth=width, linestyle=style, label=label)
+            
+            # Son noktaya değer yaz
+            ax.annotate(f"{values[-1]}", (dates[-1], values[-1]), textcoords="offset points", xytext=(0,10), ha='center', fontsize=8)
+
+        ax.set_title("Arama Hacmi / Sosyal Medya İlgisi (Son 7 Gün)")
+        ax.set_ylabel("İlgi Skoru (0-100)")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        canvas = FigureCanvasTkAgg(fig, master=chart_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    # --- Yardımcı Fonksiyon: AI Analizi ---
+    def analyze_trend_with_ai(trend_name, score, is_simulation=False):
+        ai_text.config(state="normal")
+        ai_text.delete("1.0", tk.END)
+        ai_text.insert("1.0", "🧠 Trend verisi analiz ediliyor... (Gemini)\n")
+        ai_text.config(state="disabled")
+        
+        def _thread():
+            if not GEMINI_API_KEY:
+                update_ai_text("Hata: Gemini API anahtarı yok.")
+                return
+
+            context = "SİMÜLASYON VERİSİ" if is_simulation else "GERÇEK GOOGLE TRENDS VERİSİ"
+
+            prompt = f"""
+Sen bir Hızlı Moda (Fast Fashion) ve Tedarik Zinciri stratejistisin.
+
+DURUM ({context}):
+"{trend_name}" isimli ürünün ilgisi son 24 saatte aniden yükseldi.
+Mevcut İlgi Skoru: {score}/100 (Çok Yüksek)
+
+GÖREV:
+1. Bu trendin olası sebebini 1 cümleyle tahmin et (Örn: Influencer etkisi, mevsim, viral video).
+2. Tedarik zinciri için ACİL 3 maddelik aksiyon planı çıkar.
+3. Risk analizi yap (Bu geçici bir "micro-trend" mi yoksa sezonluk mu?).
+
+Yanıtını Türkçe, profesyonel ve kısa tut.
+"""
+            
+            try:
+                # Mevcut kodundaki API yapısını kullanıyoruz
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+                headers = {'Content-Type': 'application/json'}
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                
+                resp = requests.post(url, headers=headers, json=payload, timeout=20)
+                
+                if resp.status_code == 200:
+                    result = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    root.after(0, lambda: update_ai_text(result))
+                else:
+                    root.after(0, lambda: update_ai_text(f"AI yanıt vermedi. Kod: {resp.status_code}"))
+            except Exception as e:
+                root.after(0, lambda: update_ai_text(f"Bağlantı hatası: {e}"))
+
+        threading.Thread(target=_thread, daemon=True).start()
+
+    def update_ai_text(text):
+        ai_text.config(state="normal")
+        ai_text.delete("1.0", tk.END)
+        ai_text.insert("1.0", text)
+        ai_text.config(state="disabled")
 
 # ---------- REKLAMASYON YÖNETİMİ FONKSİYONLARI ----------
 # Yardımcı Fonksiyonlar
@@ -4366,8 +4590,11 @@ def show_page(page_name):
     if page_name in frames:
         frames[page_name].pack(fill="both", expand=True)
         
+        # Trend Avcısı initialization on demand
+        if page_name == "Trend Avcısı":
+            init_trend_hunter_tab()
         # Reklamasyon pages initialization on demand
-        if page_name == "Rek Yönetici Özeti":
+        elif page_name == "Rek Yönetici Özeti":
             draw_rek_dashboard(frame_rek_ozet)
         elif page_name == "Rek Detaylı Rapor":
             init_rek_detailed_report_tab()
@@ -4457,6 +4684,7 @@ frame_ayarlar = ttk.Frame(content_area, padding="10")
 frame_ai = ttk.Frame(content_area, padding="10")
 frame_negotiator = ttk.Frame(content_area, padding="10") 
 frame_haberler = ttk.Frame(content_area, padding="10") # YENİ FRAME
+frame_trend_hunter = ttk.Frame(content_area, padding="10") # TREND AVCISI FRAME
 
 # Reklamasyon Yönetimi Frames
 frame_rek_main = ttk.Frame(content_area, padding="10")
@@ -4482,6 +4710,7 @@ frames = {
     "Pazarlık Robotu": frame_negotiator, 
     "Ayarlar": frame_ayarlar, # Artık kullanılmıyor ama referans hatası olmaması için tutuldu
     "Sektör Haberleri": frame_haberler, # YENİ FRAME
+    "Trend Avcısı": frame_trend_hunter, # TREND HUNTER
     # Reklamasyon Yönetimi
     "Reklamasyon Yönetimi": frame_rek_main,
     "Rek Yönetici Özeti": frame_rek_ozet,
@@ -4497,6 +4726,7 @@ menu_items = [
     ("🛒 Akıllı Sipariş", "Akıllı Sipariş"),
     ("💰 Pazarlık Robotu", "Pazarlık Robotu"), 
     ("📰 Sektör Haberleri", "Sektör Haberleri"), # YENİ BUTON
+    ("🔮 Trend Avcısı", "Trend Avcısı"), # TREND HUNTER
     ("🏭 Reklamasyon Yönetimi", "Reklamasyon Yönetimi"), # YENİ BUTON
     ("📝 Tedarikçi Karnesi", "Tedarikçi Karnesi"),
     ("📈 Aylık Trend", "Aylık Trend"),

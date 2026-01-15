@@ -12,3 +12,4 @@ rapidfuzz
 numpy
 schedule
 prophet
+pytrends
