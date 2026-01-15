@@ -1,0 +1,1 @@
+# Tedarik-y-netimi-kod-birle-im
