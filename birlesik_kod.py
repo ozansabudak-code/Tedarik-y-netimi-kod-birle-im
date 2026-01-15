@@ -812,6 +812,7 @@ def init_trend_hunter_tab():
     
     # -- Gerçek Veri Butonu --
     def fetch_real_trends():
+        """Google Trends verilerini ARKA PLANDA çeker (UI dondurmaz)."""
         if not PYTRENDS_AVAILABLE:
             messagebox.showerror("Hata", "pytrends kütüphanesi eksik. Lütfen 'pip install pytrends' yapın.")
             return
@@ -824,53 +825,68 @@ def init_trend_hunter_tab():
 
         if not keywords: return
 
-        try:
-            status_lbl.config(text="Google Trends verileri çekiliyor... (Yavaş Mod - Bot Koruması)")
-            left_panel.update() # UI'ı güncelle
-            
-            # Google Trends Bağlantısı (Retry & Backoff ile)
-            # retries=5: 429 hatası alırsa 5 kere yeniden dene
-            # backoff_factor=10: Denemeler arası bekleme süresi (10sn, 20sn, 40sn...)
-            # timeout=(10,25): Bağlantı için 10sn, veri okuma için 25sn bekle
-            pytrends = TrendReq(
-                hl='tr-TR', 
-                tz=180, 
-                retries=5, 
-                backoff_factor=10, 
-                timeout=(10, 25)
-            )
-            
-            # Anahtar kelimeler için veri çek
-            pytrends.build_payload(keywords, cat=0, timeframe='now 7-d', geo='TR', gprop='')
-            
-            # Google'a nazik ol: Her istekte küçük bir bekleme ekle
-            import time
-            time.sleep(2)  # 2 saniye bekle (Bot algılamasını azaltır)
-            
-            data = pytrends.interest_over_time()
-            
-            if not data.empty:
-                # Tarih formatı
-                dates = [d.strftime("%d.%m") for d in data.index]
-                # Chart için veri hazırlığı
-                chart_data = {col: data[col].tolist() for col in keywords}
+        # Yükleniyor durumunu göster
+        status_lbl.config(text="Google Trends verileri çekiliyor... (Arka planda, UI donmaz)")
+        left_panel.update()
+        
+        # --- ARKA PLAN İŞÇİSİ (Thread) ---
+        def _background_worker():
+            try:
+                # Google Trends Bağlantısı (Retry & Backoff ile)
+                # retries=5: 429 hatası alırsa 5 kere yeniden dene
+                # backoff_factor=10: Denemeler arası bekleme süresi (10sn, 20sn, 40sn...)
+                # timeout=(10,25): Bağlantı için 10sn, veri okuma için 25sn bekle
+                pytrends = TrendReq(
+                    hl='tr-TR', 
+                    tz=180, 
+                    retries=5, 
+                    backoff_factor=10, 
+                    timeout=(10, 25)
+                )
                 
-                update_trend_chart(dates, chart_data)
+                # Anahtar kelimeler için veri çek
+                pytrends.build_payload(keywords, cat=0, timeframe='now 7-d', geo='TR', gprop='')
                 
-                # En çok artanı bul
-                last_row = data.iloc[-1]
-                top_trend = last_row.idxmax()
-                current_score = last_row.max()
+                # Google'a nazik ol: Her istekte küçük bir bekleme ekle
+                import time
+                time.sleep(2)  # 2 saniye bekle (Bot algılamasını azaltır)
                 
-                analyze_trend_with_ai(top_trend, current_score, is_simulation=False)
-            else:
-                messagebox.showinfo("Bilgi", "Bu kelimeler için yeterli veri bulunamadı.")
+                data = pytrends.interest_over_time()
                 
-            status_lbl.config(text="Veri çekildi.")
-            
-        except Exception as e:
-            error_msg = str(e)
-            
+                # Başarıyla veri geldi - UI güncellemesi için ana thread'e gönder
+                root.after(0, lambda: _update_ui_success(data, keywords))
+                
+            except Exception as e:
+                # Hata oluştu - UI güncellemesi için ana thread'e gönder
+                root.after(0, lambda: _update_ui_error(str(e)))
+        
+        # --- ARAYÜZ GÜNCELLEME (Başarılı) ---
+        def _update_ui_success(data, kw_list):
+            try:
+                if not data.empty:
+                    # Tarih formatı
+                    dates = [d.strftime("%d.%m") for d in data.index]
+                    # Chart için veri hazırlığı
+                    chart_data = {col: data[col].tolist() for col in kw_list}
+                    
+                    update_trend_chart(dates, chart_data)
+                    
+                    # En çok artanı bul
+                    last_row = data.iloc[-1]
+                    top_trend = last_row.idxmax()
+                    current_score = last_row.max()
+                    
+                    analyze_trend_with_ai(top_trend, current_score, is_simulation=False)
+                    status_lbl.config(text="✅ Veri başarıyla çekildi.")
+                else:
+                    messagebox.showinfo("Bilgi", "Bu kelimeler için yeterli veri bulunamadı.")
+                    status_lbl.config(text="Veri bulunamadı.")
+            except Exception as parse_error:
+                messagebox.showerror("Hata", f"Veri işleme hatası: {str(parse_error)}")
+                status_lbl.config(text="Veri işleme hatası.")
+        
+        # --- ARAYÜZ GÜNCELLEME (Hata) ---
+        def _update_ui_error(error_msg):
             # 429 hatası kontrolü (Rate Limit)
             if "429" in error_msg or "Too Many Requests" in error_msg:
                 messagebox.showerror(
@@ -884,11 +900,14 @@ def init_trend_hunter_tab():
                 status_lbl.config(text="⏳ Google Rate Limit - Lütfen 1-2 saat bekleyin")
             else:
                 messagebox.showerror("Hata", f"Google Trends bağlantı hatası:\n{error_msg}\n\nİpucu: Simülasyon butonunu deneyebilirsiniz.")
-                status_lbl.config(text="Hata oluştu.")
+                status_lbl.config(text="❌ Hata oluştu.")
             
             # Loglama
             if activity_logger:
                 activity_logger.log_error(f"Google Trends hatası: {error_msg}", "Trend Avcısı")
+        
+        # Arka plan thread'ini başlat (daemon=True: program kapanırken otomatik temizlenir)
+        threading.Thread(target=_background_worker, daemon=True).start()
 
     ttk.Button(left_panel, text="🌍 Gerçek Verileri Tara (Google Trends)", command=fetch_real_trends).pack(fill="x", pady=10)
     status_lbl.pack()
