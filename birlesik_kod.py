@@ -913,6 +913,10 @@ def init_rek_detailed_report_tab():
         cb_col.pack(side="left", padx=5)
         entry_search = ttk.Entry(filter_frame, width=30); entry_search.pack(side="left", padx=5)
         
+        # Sorumlu Ata Butonu
+        btn_assign = tk.Button(filter_frame, text="👤 Sorumlu Ata", bg="#9b59b6", fg="white", font=("Segoe UI", 9, "bold"), command=lambda: assign_responsible())
+        btn_assign.pack(side="right", padx=5)
+        
         # Export Buttons
         btn_xls = tk.Button(filter_frame, text="Excel", bg="#27ae60", fg="white", font=("Segoe UI", 8), command=lambda: export_rek_df_to_excel(current_data_detail, "Rek_Detayli"))
         btn_xls.pack(side="right", padx=5)
@@ -920,7 +924,7 @@ def init_rek_detailed_report_tab():
         btn_pdf.pack(side="right", padx=5)
 
         tree_frame = tk.Frame(tab_detay); tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        cols = ["Tedarikçi", "Order No", "Takım", "Parti No", "Stok Adı", "Fiş No", "Fiş Tarihi", "Müş. Gecikme", "Sip. Gecikme", "On Time Mik.", "Geciken Mik.", "İade Mik.", "İade Tutar", "Rek. Mik.", "Rek. Tutar", "Net Mik.", "Rek. Oranı"]
+        cols = ["☑", "Tedarikçi", "Order No", "Takım", "Parti No", "Stok Adı", "Fiş No", "Fiş Tarihi", "Müş. Gecikme", "Sip. Gecikme", "On Time Mik.", "Geciken Mik.", "İade Mik.", "İade Tutar", "Rek. Mik.", "Rek. Tutar", "Net Mik.", "Rek. Oranı"]
         tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=15)
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview); hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -929,14 +933,35 @@ def init_rek_detailed_report_tab():
 
         for c in cols:
             tree.heading(c, text=c)
-            if "Mik" in c or "Oran" in c or "Tutar" in c or "Gecikme" in c: tree.column(c, anchor="e", width=85)
+            if c == "☑": tree.column(c, anchor="center", width=40)
+            elif "Mik" in c or "Oran" in c or "Tutar" in c or "Gecikme" in c: tree.column(c, anchor="e", width=85)
             else: tree.column(c, anchor="w", width=120)
         
+        # Checkbox durumlarını saklayacak dictionary
+        checkbox_states = {}
+        
+        def toggle_checkbox(event):
+            """Checkbox toggle işlemi"""
+            item = tree.identify_row(event.y)
+            column = tree.identify_column(event.x)
+            if item and column == '#1':  # İlk kolon (checkbox)
+                current_val = tree.item(item, 'values')[0]
+                new_val = '☐' if current_val == '☑' else '☑'
+                values = list(tree.item(item, 'values'))
+                values[0] = new_val
+                tree.item(item, values=values)
+                checkbox_states[item] = (new_val == '☑')
+        
+        tree.bind('<Button-1>', toggle_checkbox)
+        
         current_data_detail = pd.DataFrame()
+        current_row_data = {}  # Her satırın tam verisini saklamak için
 
         def apply_filters(event=None):
-            nonlocal current_data_detail
+            nonlocal current_data_detail, current_row_data
             for i in tree.get_children(): tree.delete(i)
+            checkbox_states.clear()
+            current_row_data.clear()
             if df_reklamasyon_global is None: return
 
             df_proc = df_reklamasyon_global.copy()
@@ -981,18 +1006,219 @@ def init_rek_detailed_report_tab():
                 oran = (total_risk / row["Alim_Tutari"] * 100) if row["Alim_Tutari"] > 0 else 0
                 s_gec = int(row["Siparis_Gecikme"]); m_gec = int(row["Musteri_Gecikme"])
 
-                vals = (row["Cari Adı"], row["Order No"], row["Order Grup Adı"], row["Parti/Lab No"], row["Stok Adı"], row["Sipariş Fişi Fiş No"], row["Fiş_Tarihi_Str"], m_gec, s_gec,
+                vals = ('☐', row["Cari Adı"], row["Order No"], row["Order Grup Adı"], row["Parti/Lab No"], row["Stok Adı"], row["Sipariş Fişi Fiş No"], row["Fiş_Tarihi_Str"], m_gec, s_gec,
                         f"{row['On_Time_Miktar']:,.0f}", f"{row['Geciken_Miktar']:,.0f}", f"{row['Iade_Edilen_Miktar']:,.0f}", f"{row['Iade_Tutari']:,.0f}",
                         f"{row['Reklamasyon_Miktar']:,.0f}", f"{row['Reklamasyon_Tutari']:,.0f}", f"{net_mik:,.0f}", f"%{oran:.2f}")
                 tags = []
                 if s_gec > 0: tags.append('late')
                 if row['Iade_Tutari'] > 0: tags.append('return')
                 if row['Reklamasyon_Tutari'] > 0: tags.append('reclaim')
-                tree.insert("", "end", values=vals, tags=tuple(tags))
+                item_id = tree.insert("", "end", values=vals, tags=tuple(tags))
+                
+                # Satır verisini sakla
+                current_row_data[item_id] = {
+                    'Tedarikçi': row["Cari Adı"],
+                    'Order No': row["Order No"],
+                    'Takım': row["Order Grup Adı"],
+                    'Parti No': row["Parti/Lab No"],
+                    'Stok Adı': row["Stok Adı"],
+                    'Siparis_Gecikme': s_gec,
+                    'Musteri_Gecikme': m_gec,
+                    'Iade_Tutari': row['Iade_Tutari'],
+                    'Reklamasyon_Tutari': row['Reklamasyon_Tutari'],
+                    'Alim_Tutari': row['Alim_Tutari']
+                }
             
             tree.tag_configure('late', foreground='#c0392b') 
             tree.tag_configure('return', background='#fff3e0') 
             tree.tag_configure('reclaim', background='#ffebee')
+
+        def assign_responsible():
+            """Seçili satırlar için sorumlu atama ve AI mail taslağı oluşturma"""
+            selected_items = [item for item, checked in checkbox_states.items() if checked]
+            
+            if not selected_items:
+                messagebox.showwarning("Uyarı", "Lütfen en az bir satır seçin!")
+                return
+            
+            # Seçili satırların bilgilerini topla
+            selected_data = []
+            for item in selected_items:
+                if item in current_row_data:
+                    selected_data.append(current_row_data[item])
+            
+            if not selected_data:
+                messagebox.showerror("Hata", "Seçili satır verileri bulunamadı!")
+                return
+            
+            # AI mail taslağı oluşturma penceresi
+            draft_window = tk.Toplevel(root)
+            draft_window.title("Sorumlu Atama - AI Mail Taslağı")
+            draft_window.geometry("800x700")
+            draft_window.configure(bg="#ecf0f1")
+            
+            # Başlık
+            header = tk.Frame(draft_window, bg="#34495e", padx=20, pady=15)
+            header.pack(fill="x")
+            tk.Label(header, text="🤖 Yapay Zeka Destekli Mail Taslağı", font=("Segoe UI", 14, "bold"), fg="white", bg="#34495e").pack()
+            
+            # İçerik
+            content = tk.Frame(draft_window, bg="#ecf0f1", padx=20, pady=20)
+            content.pack(fill="both", expand=True)
+            
+            # Seçili kayıt sayısı
+            tk.Label(content, text=f"✓ Seçili Kayıt: {len(selected_data)}", font=("Segoe UI", 10, "bold"), bg="#ecf0f1", fg="#27ae60").pack(anchor="w", pady=(0,10))
+            
+            # Mail taslağı text alanı
+            tk.Label(content, text="Mail Taslağı:", font=("Segoe UI", 10, "bold"), bg="#ecf0f1").pack(anchor="w", pady=(10,5))
+            text_frame = tk.Frame(content)
+            text_frame.pack(fill="both", expand=True, pady=5)
+            
+            text_scroll = ttk.Scrollbar(text_frame)
+            text_scroll.pack(side="right", fill="y")
+            
+            draft_text = tk.Text(text_frame, wrap="word", font=("Segoe UI", 10), yscrollcommand=text_scroll.set, height=20)
+            draft_text.pack(side="left", fill="both", expand=True)
+            text_scroll.config(command=draft_text.yview)
+            
+            draft_text.insert("1.0", "AI taslak oluşturuluyor, lütfen bekleyin...")
+            draft_text.config(state="disabled")
+            
+            # Butonlar
+            btn_frame = tk.Frame(content, bg="#ecf0f1")
+            btn_frame.pack(fill="x", pady=10)
+            
+            def copy_to_clipboard():
+                root.clipboard_clear()
+                root.clipboard_append(draft_text.get("1.0", "end-1c"))
+                messagebox.showinfo("Başarılı", "Mail taslağı panoya kopyalandı!")
+            
+            tk.Button(btn_frame, text="📋 Panoya Kopyala", bg="#3498db", fg="white", font=("Segoe UI", 10), padx=20, pady=8, command=copy_to_clipboard).pack(side="left", padx=5)
+            tk.Button(btn_frame, text="✖ Kapat", bg="#95a5a6", fg="white", font=("Segoe UI", 10), padx=20, pady=8, command=draft_window.destroy).pack(side="right", padx=5)
+            
+            # AI taslak oluşturma (thread'de)
+            def generate_draft():
+                try:
+                    # Sorun analizi
+                    problems = []
+                    for data in selected_data:
+                        if data['Siparis_Gecikme'] > 0:
+                            problems.append(f"Termin Gecikmesi ({data['Siparis_Gecikme']} gün)")
+                        if data['Iade_Tutari'] > 0:
+                            problems.append(f"İade Durumu (₺{data['Iade_Tutari']:,.0f})")
+                        if data['Reklamasyon_Tutari'] > 0:
+                            problems.append(f"Reklamasyon (₺{data['Reklamasyon_Tutari']:,.0f})")
+                    
+                    problem_summary = ", ".join(set(problems))
+                    
+                    # Sorumlu alanı belirleme
+                    responsible_area = "Termin Yönetimi ve Planlama"
+                    if any(d['Iade_Tutari'] > 0 or d['Reklamasyon_Tutari'] > 0 for d in selected_data):
+                        responsible_area = "Kalite Kontrol ve Reklamasyon Yönetimi"
+                    elif any(d['Siparis_Gecikme'] > 0 for d in selected_data):
+                        responsible_area = "Termin Yönetimi ve Planlama"
+                    
+                    # AI prompt hazırlama
+                    if GEMINI_API_KEY:
+                        prompt = f"""Bir tedarik zinciri yöneticisi olarak, aşağıdaki reklamasyon kayıtları için sorumlu ekibe gönderilecek profesyonel bir mail taslağı hazırla.
+
+Seçili Kayıt Sayısı: {len(selected_data)}
+Tespit Edilen Sorunlar: {problem_summary}
+Sorumlu Alan: {responsible_area}
+
+Detaylar:
+"""
+                        for i, data in enumerate(selected_data, 1):
+                            prompt += f"\n{i}. Tedarikçi: {data['Tedarikçi']}, Order: {data['Order No']}, Takım: {data['Takım']}"
+                            if data['Siparis_Gecikme'] > 0:
+                                prompt += f", Gecikme: {data['Siparis_Gecikme']} gün"
+                            if data['Reklamasyon_Tutari'] > 0:
+                                prompt += f", Reklamasyon: ₺{data['Reklamasyon_Tutari']:,.0f}"
+                        
+                        prompt += """\n\nMail taslağında:
+1. Konu satırını belirt
+2. Profesyonel ve nazik bir ton kullan
+3. Sorunu net bir şekilde açıkla
+4. Sorumlu alanı belirt
+5. Beklenen aksiyonları listele
+6. Termin belirt
+7. İmza için yer bırak
+
+Mail dilini Türkçe kullan ve profesyonel iş ortamına uygun yaz."""
+                        
+                        # Gemini API çağrısı
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}"
+                        headers = {'Content-Type': 'application/json'}
+                        payload = {
+                            "contents": [{
+                                "parts": [{"text": prompt}]
+                            }]
+                        }
+                        
+                        response = requests.post(url, headers=headers, json=payload, timeout=30)
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            ai_draft = result['candidates'][0]['content']['parts'][0]['text']
+                        else:
+                            ai_draft = f"AI yanıt alınamadı. Hata: {response.status_code}"
+                    else:
+                        # Fallback: API key yoksa manuel taslak
+                        ai_draft = f"""Konu: Acil - {responsible_area} Gereksinimi
+
+Sayın Yetkili,
+
+{len(selected_data)} adet sipariş kaydında tespit edilen sorunlar hakkında bilgilendirme yapmak isteriz.
+
+Tespit Edilen Sorunlar:
+{problem_summary}
+
+Detaylar:
+"""
+                        for i, data in enumerate(selected_data, 1):
+                            ai_draft += f"\n{i}. Tedarikçi: {data['Tedarikçi']}"
+                            ai_draft += f"\n   Order No: {data['Order No']}"
+                            ai_draft += f"\n   Takım: {data['Takım']}"
+                            if data['Siparis_Gecikme'] > 0:
+                                ai_draft += f"\n   ⚠️ Termin Gecikmesi: {data['Siparis_Gecikme']} gün"
+                            if data['Reklamasyon_Tutari'] > 0:
+                                ai_draft += f"\n   ⚠️ Reklamasyon Tutarı: ₺{data['Reklamasyon_Tutari']:,.0f}"
+                            if data['Iade_Tutari'] > 0:
+                                ai_draft += f"\n   ⚠️ İade Tutarı: ₺{data['Iade_Tutari']:,.0f}"
+                            ai_draft += "\n"
+                        
+                        ai_draft += f"""\nSorumlu Alan: {responsible_area}
+
+Beklenen Aksiyonlar:
+1. Durumun acil olarak değerlendirilmesi
+2. Tedarikçi ile iletişime geçilmesi
+3. Düzeltici önlemlerin alınması
+4. 3 iş günü içinde geri bildirim verilmesi
+
+Konuyla ilgili destek için iletişime geçebilirsiniz.
+
+Saygılarımızla,
+[İmza]"""
+                    
+                    # Text alanını güncelle
+                    draft_text.config(state="normal")
+                    draft_text.delete("1.0", "end")
+                    draft_text.insert("1.0", ai_draft)
+                    draft_text.config(state="normal")  # Düzenlenebilir bırak
+                    
+                    # LOG
+                    if activity_logger:
+                        activity_logger.log_event("AI_DRAFT_GENERATED", f"{len(selected_data)} kayıt için mail taslağı oluşturuldu", "Rek Detaylı Rapor")
+                    
+                except Exception as e:
+                    draft_text.config(state="normal")
+                    draft_text.delete("1.0", "end")
+                    draft_text.insert("1.0", f"Hata oluştu: {str(e)}\n\nLütfen tekrar deneyin veya manuel olarak mail oluşturun.")
+                    if activity_logger:
+                        activity_logger.log_error(f"AI draft hatası: {str(e)}", "Rek Detaylı Rapor")
+            
+            # Thread'de çalıştır
+            threading.Thread(target=generate_draft, daemon=True).start()
 
         cb_status.bind("<<ComboboxSelected>>", apply_filters)
         entry_search.bind("<KeyRelease>", apply_filters)
