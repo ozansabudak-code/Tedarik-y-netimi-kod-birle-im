@@ -3053,27 +3053,68 @@ def show_currency_simulation():
             new_total = current_total + total_impact
             impact_pct = (total_impact / current_total) * 100
             
-            # Tedarikçi bazında etki
+            # Tedarikçi bazında etki (Stok Grubu ile birlikte)
             supplier_col = tedarikci_col_global
+            stok_grup_col = stok_grup_col_global
+            
+            supplier_impact = []
+            supplier_by_stock_group = {}
+            
             if supplier_col:
-                supplier_impact = []
-                for supplier in df_calc[supplier_col].unique()[:10]:  # İlk 10 tedarikçi
-                    supplier_data = df_calc[df_calc[supplier_col] == supplier]
-                    if miktar_col:
-                        sup_total = (supplier_data[fiyat_col] * supplier_data[miktar_col]).sum()
-                    else:
-                        sup_total = supplier_data[fiyat_col].sum()
+                # Stok Grubu varsa, önce stok grubu bazında grupla
+                if stok_grup_col and stok_grup_col in df_calc.columns:
+                    # Stok grubu + tedarikçi kombinasyonları
+                    for idx, row in df_calc.iterrows():
+                        supplier = row[supplier_col]
+                        stock_group = row.get(stok_grup_col, "Bilinmiyor")
+                        
+                        if pd.isna(stock_group) or stock_group == "":
+                            stock_group = "Bilinmiyor"
+                        
+                        # Hesaplama
+                        if miktar_col:
+                            row_total = row[fiyat_col] * row.get(miktar_col, 1)
+                        else:
+                            row_total = row[fiyat_col]
+                        
+                        key = (stock_group, supplier)
+                        if key not in supplier_by_stock_group:
+                            supplier_by_stock_group[key] = 0
+                        supplier_by_stock_group[key] += row_total
                     
-                    sup_usd_impact = sup_total * usd_portion * (usd_change / 100)
-                    sup_eur_impact = sup_total * eur_portion * (eur_change / 100)
-                    sup_new_total = sup_total + sup_usd_impact + sup_eur_impact
-                    
-                    supplier_impact.append({
-                        'supplier': supplier,
-                        'current': sup_total,
-                        'new': sup_new_total,
-                        'change': sup_new_total - sup_total
-                    })
+                    # Etki hesapla
+                    for (stock_group, supplier), sup_total in supplier_by_stock_group.items():
+                        sup_usd_impact = sup_total * usd_portion * (usd_change / 100)
+                        sup_eur_impact = sup_total * eur_portion * (eur_change / 100)
+                        sup_new_total = sup_total + sup_usd_impact + sup_eur_impact
+                        
+                        supplier_impact.append({
+                            'stock_group': stock_group,
+                            'supplier': supplier,
+                            'current': sup_total,
+                            'new': sup_new_total,
+                            'change': sup_new_total - sup_total
+                        })
+                else:
+                    # Stok grubu yoksa sadece tedarikçi bazında
+                    for supplier in df_calc[supplier_col].unique():
+                        supplier_data = df_calc[df_calc[supplier_col] == supplier]
+                        if miktar_col:
+                            sup_total = (supplier_data[fiyat_col] * supplier_data[miktar_col]).sum()
+                        else:
+                            sup_total = supplier_data[fiyat_col].sum()
+                        
+                        sup_usd_impact = sup_total * usd_portion * (usd_change / 100)
+                        sup_eur_impact = sup_total * eur_portion * (eur_change / 100)
+                        sup_new_total = sup_total + sup_usd_impact + sup_eur_impact
+                        
+                        supplier_impact.append({
+                            'stock_group': None,
+                            'supplier': supplier,
+                            'current': sup_total,
+                            'new': sup_new_total,
+                            'change': sup_new_total - sup_total
+                        })
             
             # Rapor oluştur
             report = f"""
@@ -3101,12 +3142,43 @@ def show_currency_simulation():
 """
             
             if supplier_impact:
-                report += "\n📋 TEDARİKÇİ BAZINDA ETKİ (İlk 10):\n\n"
-                report += f"{'Tedarikçi':<25} {'Mevcut':<15} {'Yeni':<15} {'Değişim':<15}\n"
-                report += "─" * 70 + "\n"
-                
-                for item in sorted(supplier_impact, key=lambda x: abs(x['change']), reverse=True):
-                    report += f"{item['supplier']:<25} ₺{item['current']:>12,.0f} ₺{item['new']:>12,.0f} {item['change']:>+12,.0f}\n"
+                # Stok grubu varsa, gruplanmış şekilde göster
+                if stok_grup_col and any(item['stock_group'] is not None for item in supplier_impact):
+                    report += "\n📋 STOK GRUBU VE TEDARİKÇİ BAZINDA ETKİ:\n\n"
+                    
+                    # Stok gruplarına göre sırala
+                    supplier_impact_sorted = sorted(supplier_impact, key=lambda x: (x['stock_group'], -abs(x['change'])))
+                    
+                    current_group = None
+                    for item in supplier_impact_sorted:
+                        # Yeni stok grubu başlığı
+                        if item['stock_group'] != current_group:
+                            current_group = item['stock_group']
+                            report += f"\n🔹 {current_group}\n"
+                            report += "─" * 85 + "\n"
+                            report += f"{'  Tedarikçi':<30} {'Mevcut':<18} {'Yeni':<18} {'Değişim':<18}\n"
+                            report += "─" * 85 + "\n"
+                        
+                        # Tedarikçi detayı
+                        report += f"  {item['supplier']:<28} ₺{item['current']:>14,.0f} ₺{item['new']:>14,.0f} {item['change']:>+15,.0f}\n"
+                    
+                    # Genel toplam tüm tedarikçiler
+                    report += "\n" + "═" * 85 + "\n"
+                    report += f"\n📊 GENEL ÖZET:\n"
+                    report += f"   • Toplam Tedarikçi Sayısı: {len(supplier_impact)}\n"
+                    report += f"   • Toplam Stok Grubu Sayısı: {len(set(item['stock_group'] for item in supplier_impact))}\n"
+                    
+                else:
+                    # Stok grubu yoksa klasik gösterim (tüm tedarikçiler)
+                    report += "\n📋 TEDARİKÇİ BAZINDA ETKİ (Tüm Tedarikçiler):\n\n"
+                    report += f"{'Tedarikçi':<30} {'Mevcut':<18} {'Yeni':<18} {'Değişim':<18}\n"
+                    report += "─" * 85 + "\n"
+                    
+                    for item in sorted(supplier_impact, key=lambda x: abs(x['change']), reverse=True):
+                        report += f"{item['supplier']:<30} ₺{item['current']:>14,.0f} ₺{item['new']:>14,.0f} {item['change']:>+15,.0f}\n"
+                    
+                    report += "\n" + "─" * 85 + "\n"
+                    report += f"Toplam Tedarikçi: {len(supplier_impact)}\n"
             
             report += f"""
 
