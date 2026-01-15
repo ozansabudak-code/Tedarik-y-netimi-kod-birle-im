@@ -763,12 +763,28 @@ def init_trend_hunter_tab():
         if not keywords: return
 
         try:
-            status_lbl.config(text="Google Trends verileri çekiliyor... Lütfen bekleyin.")
+            status_lbl.config(text="Google Trends verileri çekiliyor... (Yavaş Mod - Bot Koruması)")
             left_panel.update() # UI'ı güncelle
             
-            # Google Trends Bağlantısı
-            pytrends = TrendReq(hl='tr-TR', tz=180)
+            # Google Trends Bağlantısı (Retry & Backoff ile)
+            # retries=5: 429 hatası alırsa 5 kere yeniden dene
+            # backoff_factor=10: Denemeler arası bekleme süresi (10sn, 20sn, 40sn...)
+            # timeout=(10,25): Bağlantı için 10sn, veri okuma için 25sn bekle
+            pytrends = TrendReq(
+                hl='tr-TR', 
+                tz=180, 
+                retries=5, 
+                backoff_factor=10, 
+                timeout=(10, 25)
+            )
+            
+            # Anahtar kelimeler için veri çek
             pytrends.build_payload(keywords, cat=0, timeframe='now 7-d', geo='TR', gprop='')
+            
+            # Google'a nazik ol: Her istekte küçük bir bekleme ekle
+            import time
+            time.sleep(2)  # 2 saniye bekle (Bot algılamasını azaltır)
+            
             data = pytrends.interest_over_time()
             
             if not data.empty:
@@ -791,8 +807,26 @@ def init_trend_hunter_tab():
             status_lbl.config(text="Veri çekildi.")
             
         except Exception as e:
-            messagebox.showerror("Hata", f"Google Trends bağlantı hatası:\n{str(e)}\n(Google çok sık istekte bloklayabilir)")
-            status_lbl.config(text="Hata oluştu.")
+            error_msg = str(e)
+            
+            # 429 hatası kontrolü (Rate Limit)
+            if "429" in error_msg or "Too Many Requests" in error_msg:
+                messagebox.showerror(
+                    "⏳ Google Rate Limit", 
+                    "Google Trends geçici olarak istekleri engelliyor.\n\n"
+                    "🔹 Çözüm 1: 1-2 saat bekleyip tekrar deneyin\n"
+                    "🔹 Çözüm 2: VPN kullanarak IP adresinizi değiştirin\n"
+                    "🔹 Çözüm 3: Simülasyon modunu kullanın (demo butonu)\n\n"
+                    "Not: Bu bir Google API limiti, kodla ilgili değil."
+                )
+                status_lbl.config(text="⏳ Google Rate Limit - Lütfen 1-2 saat bekleyin")
+            else:
+                messagebox.showerror("Hata", f"Google Trends bağlantı hatası:\n{error_msg}\n\nİpucu: Simülasyon butonunu deneyebilirsiniz.")
+                status_lbl.config(text="Hata oluştu.")
+            
+            # Loglama
+            if activity_logger:
+                activity_logger.log_error(f"Google Trends hatası: {error_msg}", "Trend Avcısı")
 
     ttk.Button(left_panel, text="🌍 Gerçek Verileri Tara (Google Trends)", command=fetch_real_trends).pack(fill="x", pady=10)
     status_lbl.pack()
