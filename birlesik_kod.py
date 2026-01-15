@@ -2794,9 +2794,26 @@ def update_forecast_tab(df, date_col, fiyat_col):
             ax1.plot(forecast[future_mask]['ds'], forecast[future_mask]['yhat'], 
                     'r--', marker='x', markersize=10, linewidth=2, label='Gelecek Tahminleri')
             
+            # Gerçek verilere değer etiketleri ekle (son 6 ay)
+            recent_data = prophet_df.tail(6)
+            for idx, row in recent_data.iterrows():
+                ax1.annotate(f'{row["y"]:.1f}', 
+                           xy=(row['ds'], row['y']),
+                           xytext=(0, 8), textcoords='offset points',
+                           ha='center', fontsize=8, color='black',
+                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
+            
+            # Gelecek tahminlere değer etiketleri ekle
+            for idx, row in forecast[future_mask].iterrows():
+                ax1.annotate(f'{row["yhat"]:.1f}', 
+                           xy=(row['ds'], row['yhat']),
+                           xytext=(0, 10), textcoords='offset points',
+                           ha='center', fontsize=9, fontweight='bold', color='red',
+                           bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.8, edgecolor='red', linewidth=1.5))
+            
             ax1.set_title("Prophet ile Mevsimsellik ve Trend Analizi", fontsize=14, fontweight='bold')
             ax1.set_xlabel("Tarih", fontsize=11)
-            ax1.set_ylabel("Değer", fontsize=11)
+            ax1.set_ylabel("Değer (TL)", fontsize=11)
             ax1.legend(loc='best')
             ax1.grid(True, alpha=0.3)
             
@@ -2855,9 +2872,25 @@ Gelecek tahminler hem trend hem de mevsimsel etkiler dikkate alınarak yapıldı
             ax1.plot([last_date, next_date], [y_price[-1], next_month_price], 'r--', marker='x', markersize=10, linewidth=2, label='Gelecek Ay Tahmini')
             ax1.plot(monthly_data[date_col], p(x_numeric), "g:", alpha=0.5, linewidth=2, label="Trend Çizgisi")
             
+            # Geçmiş verilere değer etiketleri ekle (son 6 ay)
+            recent_indices = list(range(max(0, len(monthly_data)-6), len(monthly_data)))
+            for i in recent_indices:
+                ax1.annotate(f'{y_price[i]:.1f}', 
+                           xy=(monthly_data[date_col].iloc[i], y_price[i]),
+                           xytext=(0, 8), textcoords='offset points',
+                           ha='center', fontsize=8, color='black',
+                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
+            
+            # Gelecek tahminine değer etiketi ekle
+            ax1.annotate(f'{next_month_price:.1f}', 
+                       xy=(next_date, next_month_price),
+                       xytext=(0, 10), textcoords='offset points',
+                       ha='center', fontsize=9, fontweight='bold', color='red',
+                       bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.8, edgecolor='red', linewidth=1.5))
+            
             ax1.set_title("Basit Lineer Regresyon Tahmini", fontsize=14, fontweight='bold')
             ax1.set_xlabel("Tarih", fontsize=11)
-            ax1.set_ylabel("Değer", fontsize=11)
+            ax1.set_ylabel("Değer (TL)", fontsize=11)
             ax1.legend(loc='best')
             ax1.grid(True, alpha=0.3)
             
