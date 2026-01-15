@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from ttkthemes import ThemedTk
+import customtkinter as ctk
 import pandas as pd
 from rapidfuzz import process, fuzz
 import requests
@@ -5207,11 +5207,15 @@ def show_page(page_name):
         
     for btn_name, btn in menu_buttons.items():
         if btn_name == page_name:
-            btn.config(bg="#34495e", fg="#3498db", relief="sunken") 
+            btn.configure(fg_color=("#3498db", "#3498db"), text_color="white")
         else:
-            btn.config(bg="#2c3e50", fg="white", relief="flat") 
+            btn.configure(fg_color="transparent", text_color=("white", "white")) 
 
-root = ThemedTk(theme="radiance")
+# Set CustomTkinter appearance mode and color theme
+ctk.set_appearance_mode("dark")  # Modes: "System" (default), "Dark", "Light"
+ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "green", "dark-blue"
+
+root = ctk.CTk()
 root.title("Tedarikçi Rapor Analiz v2.8 (Production Pipeline & Commodity Intelligence)")
 root.geometry("1280x850")
 # Ayarlar değişkenleri global olarak tanımlanır
@@ -5224,19 +5228,19 @@ style = ttk.Style()
 style.configure("AI.Horizontal.TProgressbar", foreground='#4CAF50', background='#E8F5E9')
 
 # --- CANLI TICKER ŞERİDİ (EN ÜSTTE) ---
-ticker_frame = tk.Frame(root, bg="#2c3e50", height=30)
+ticker_frame = ctk.CTkFrame(root, height=30, corner_radius=0)
 ticker_frame.pack(side="top", fill="x")
-ticker_label = tk.Label(ticker_frame, text="Piyasa verileri yükleniyor...", font=("Consolas", 10, "bold"), fg="#2ecc71", bg="#2c3e50")
+ticker_label = ctk.CTkLabel(ticker_frame, text="Piyasa verileri yükleniyor...", font=("Consolas", 10, "bold"), text_color="#2ecc71")
 ticker_label.pack(side="left", padx=10)
 # Ticker'ı Başlat
 update_market_ticker()
 scroll_ticker_animation()
 
-sidebar = tk.Frame(root, bg="#2c3e50", width=250)
+sidebar = ctk.CTkFrame(root, width=250, corner_radius=0)
 sidebar.pack(side="left", fill="y")
 sidebar.pack_propagate(False) 
 
-tk.Label(sidebar, text="Tedarikçi\nAnaliz Sistemi", bg="#2c3e50", fg="white", font=("Segoe UI", 16, "bold"), pady=20).pack(fill="x")
+ctk.CTkLabel(sidebar, text="Tedarikçi\nAnaliz Sistemi", font=("Segoe UI", 16, "bold")).pack(fill="x", pady=20)
 
 # --- KAYDIRILABİLİR SOL MENÜ (SCROLLABLE SIDEBAR) ---
 # Scrollbar'ı önce tanımlayıp sağa yaslıyoruz, böylece her zaman görünür alanda kalıyor.
@@ -5248,7 +5252,7 @@ sidebar_canvas.pack(side="left", fill="both", expand=True)
 
 sidebar_scrollbar.config(command=sidebar_canvas.yview)
 
-sidebar_content_frame = tk.Frame(sidebar_canvas, bg="#2c3e50")
+sidebar_content_frame = ctk.CTkFrame(sidebar_canvas, fg_color="transparent")
 
 sidebar_content_frame.bind(
     "<Configure>",
@@ -5272,7 +5276,7 @@ def on_mousewheel(event):
 sidebar_canvas.bind("<Enter>", lambda _: sidebar_canvas.bind_all("<MouseWheel>", on_mousewheel))
 sidebar_canvas.bind("<Leave>", lambda _: sidebar_canvas.unbind_all("<MouseWheel>"))
 
-content_area = tk.Frame(root, bg="#ecf0f1")
+content_area = ctk.CTkFrame(root, corner_radius=0)
 content_area.pack(side="right", fill="both", expand=True)
 
 frame_ozet = ttk.Frame(content_area)
@@ -5355,14 +5359,15 @@ menu_items = [
 ]
 
 for text, name in menu_items:
-    btn = tk.Button(sidebar_content_frame, text=text, font=("Segoe UI", 11), bg="#2c3e50", fg="white", 
-                    activebackground="#34495e", activeforeground="white", bd=0, 
-                    cursor="hand2", anchor="w", padx=20, pady=10,
-                    command=lambda n=name: show_page(n))
-    btn.pack(fill="x", pady=2)
+    btn = ctk.CTkButton(sidebar_content_frame, text=text, font=("Segoe UI", 11), 
+                        corner_radius=6, anchor="w", 
+                        command=lambda n=name: show_page(n),
+                        fg_color="transparent", hover_color=("#34495e", "#34495e"),
+                        text_color=("white", "white"))
+    btn.pack(fill="x", pady=2, padx=5)
     menu_buttons[name] = btn
 
-tk.Label(sidebar_content_frame, text="v2.8 | DeFacto", bg="#2c3e50", fg="#95a5a6", font=("Arial", 8)).pack(side="bottom", pady=10)
+ctk.CTkLabel(sidebar_content_frame, text="v2.8 | DeFacto", font=("Arial", 8), text_color="#95a5a6").pack(side="bottom", pady=10)
 
 status_label = ttk.Label(content_area, text="Hazır", relief="sunken", anchor="w")
 status_label.pack(side="bottom", fill="x")

@@ -4,6 +4,15 @@
 
 Tekstil sektörü için geliştirilmiş kapsamlı tedarik zinciri yönetim sistemi.
 
+## 🎨 Modern CustomTkinter Arayüzü (v2.8)
+
+Sistem artık **CustomTkinter** framework'ü kullanmaktadır:
+- Modern, profesyonel görünüm
+- Dark mode desteği
+- Smooth animasyonlar
+- Geliştirilmiş kullanıcı deneyimi
+- Responsive tasarım
+
 ## 🆕 Yeni Özellikler (v2.8)
 
 ### 📅 Sipariş Aşama Takibi - GANT Planı
@@ -37,9 +46,19 @@ Tekstil sektörü için geliştirilmiş kapsamlı tedarik zinciri yönetim siste
 # Gerekli paketleri yükleyin
 pip install -r requirements.txt
 
+# CustomTkinter kurulumu
+pip install customtkinter
+
 # Uygulamayı çalıştırın
 python "birinci kodum"
 ```
+
+## Sistem Gereksinimleri
+
+- Python 3.8 veya üzeri
+- CustomTkinter 5.2.0 veya üzeri
+- Matplotlib, Pandas, NumPy
+- Diğer gereksinimler için `requirements.txt` dosyasına bakınız
 
 ## Detaylı Dokümantasyon
 

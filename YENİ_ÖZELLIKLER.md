@@ -1,5 +1,35 @@
 # Yeni Özellikler - Tedarik Yönetimi Sistemi v2.8
 
+## 🎨 Modern CustomTkinter Arayüzü
+
+### Genel Bakış
+Sistem artık modern ve profesyonel görünüm için **CustomTkinter** framework'ü kullanmaktadır.
+
+### Özellikler
+- **Modern Tasarım:**
+  - Dark mode desteği
+  - Smooth rounded corners
+  - Professional button styling
+  - Enhanced visual hierarchy
+  
+- **Geliştirilmiş UX:**
+  - Daha temiz arayüz
+  - İyileştirilmiş renk paleti
+  - Modern hover efektleri
+  - Responsive layout
+
+- **Performans:**
+  - Daha hızlı rendering
+  - GPU acceleration desteği
+  - Optimize edilmiş widget'lar
+
+### Kurulum
+```bash
+pip install customtkinter
+```
+
+---
+
 ## 📅 Sipariş Aşama Takibi - GANT Planı (Production Pipeline)
 
 ### Genel Bakış
