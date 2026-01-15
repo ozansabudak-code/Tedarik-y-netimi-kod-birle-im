@@ -639,7 +639,8 @@ def fetch_and_display_news(parent_frame):
     loading.pack(pady=20)
     parent_frame.update()
     
-    rss_url = "https://news.google.com/rss/search?q=tekstil+sektörü+kumaş+ekonomi&hl=tr&gl=TR&ceid=TR:tr"
+    # Tekstil, hazır giyim, kumaş haberlerine odaklı güncel RSS
+    rss_url = "https://news.google.com/rss/search?q=tekstil+OR+hazır+giyim+OR+kumaş+OR+konfeksiyon+OR+iplik+when:7d&hl=tr&gl=TR&ceid=TR:tr"
     
     try:
         response = requests.get(rss_url, timeout=10)
@@ -924,7 +925,7 @@ def init_rek_detailed_report_tab():
         btn_pdf.pack(side="right", padx=5)
 
         tree_frame = tk.Frame(tab_detay); tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
-        cols = ["☑", "Tedarikçi", "Order No", "Takım", "Parti No", "Stok Adı", "Fiş No", "Fiş Tarihi", "Müş. Gecikme", "Sip. Gecikme", "Kesilmesi Gereken Ceza", "On Time Mik.", "Geciken Mik.", "İade Mik.", "İade Tutar", "Rek. Mik.", "Rek. Tutar", "Net Mik.", "Rek. Oranı"]
+        cols = ["☑", "Tedarikçi", "Order No", "Takım", "Parti No", "Stok Adı", "Fiş No", "Fiş Tarihi", "Müş. Gecikme", "Sip. Gecikme", "Kesilmesi Gereken Ceza", "Reklamasyon Edilmesi Tutar", "On Time Mik.", "Geciken Mik.", "İade Mik.", "İade Tutar", "Rek. Mik.", "Rek. Tutar", "Net Mik.", "Rek. Oranı"]
         tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=15)
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview); hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -934,7 +935,7 @@ def init_rek_detailed_report_tab():
         for c in cols:
             tree.heading(c, text=c)
             if c == "☑": tree.column(c, anchor="center", width=40)
-            elif "Mik" in c or "Oran" in c or "Tutar" in c or "Gecikme" in c or "Ceza" in c: tree.column(c, anchor="e", width=85)
+            elif "Mik" in c or "Oran" in c or "Tutar" in c or "Gecikme" in c or "Ceza" in c or "Edilmesi" in c: tree.column(c, anchor="e", width=100)
             else: tree.column(c, anchor="w", width=120)
         
         # Checkbox durumlarını saklayacak dictionary
@@ -1013,9 +1014,13 @@ def init_rek_detailed_report_tab():
                     elif 7 <= s_gec <= 15: ceza_orani = 0.10
                     else: ceza_orani = 0.25
                 ceza_tutari = (row["Alim_Tutari"] - row["Iade_Tutari"]) * ceza_orani
+                
+                # Reklamasyon edilmesi tutar (İade + Reklamasyon + Ceza)
+                reklamasyon_edilmesi_tutar = row["Iade_Tutari"] + row["Reklamasyon_Tutari"] + ceza_tutari
 
                 vals = ('☐', row["Cari Adı"], row["Order No"], row["Order Grup Adı"], row["Parti/Lab No"], row["Stok Adı"], row["Sipariş Fişi Fiş No"], row["Fiş_Tarihi_Str"], m_gec, s_gec,
                         f"₺{ceza_tutari:,.0f}",
+                        f"₺{reklamasyon_edilmesi_tutar:,.0f}",
                         f"{row['On_Time_Miktar']:,.0f}", f"{row['Geciken_Miktar']:,.0f}", f"{row['Iade_Edilen_Miktar']:,.0f}", f"{row['Iade_Tutari']:,.0f}",
                         f"{row['Reklamasyon_Miktar']:,.0f}", f"{row['Reklamasyon_Tutari']:,.0f}", f"{net_mik:,.0f}", f"%{oran:.2f}")
                 tags = []
@@ -1035,7 +1040,9 @@ def init_rek_detailed_report_tab():
                     'Musteri_Gecikme': m_gec,
                     'Iade_Tutari': row['Iade_Tutari'],
                     'Reklamasyon_Tutari': row['Reklamasyon_Tutari'],
-                    'Alim_Tutari': row['Alim_Tutari']
+                    'Alim_Tutari': row['Alim_Tutari'],
+                    'Ceza_Tutari': ceza_tutari,
+                    'Reklamasyon_Edilmesi_Tutar': reklamasyon_edilmesi_tutar
                 }
             
             tree.tag_configure('late', foreground='#c0392b') 
@@ -1167,13 +1174,15 @@ def init_rek_detailed_report_tab():
                 try:
                     # Sorun analizi
                     problems = []
+                    total_reclamation_amount = 0
                     for data in selected_data:
                         if data['Siparis_Gecikme'] > 0:
-                            problems.append(f"Termin Gecikmesi ({data['Siparis_Gecikme']} gün)")
+                            problems.append(f"Termin Gecikmesi ({data['Siparis_Gecikme']} gün, Ceza: ₺{data.get('Ceza_Tutari', 0):,.0f})")
                         if data['Iade_Tutari'] > 0:
                             problems.append(f"İade Durumu (₺{data['Iade_Tutari']:,.0f})")
                         if data['Reklamasyon_Tutari'] > 0:
                             problems.append(f"Reklamasyon (₺{data['Reklamasyon_Tutari']:,.0f})")
+                        total_reclamation_amount += data.get('Reklamasyon_Edilmesi_Tutar', 0)
                     
                     problem_summary = ", ".join(set(problems))
                     
@@ -1190,6 +1199,7 @@ def init_rek_detailed_report_tab():
 
 Seçili Kayıt Sayısı: {len(selected_data)}
 Tespit Edilen Sorunlar: {problem_summary}
+Toplam Reklamasyon Edilmesi Gereken Tutar: ₺{total_reclamation_amount:,.0f}
 Sorumlu Alan: {responsible_area}
 
 Detaylar:
@@ -1197,9 +1207,11 @@ Detaylar:
                         for i, data in enumerate(selected_data, 1):
                             prompt += f"\n{i}. Tedarikçi: {data['Tedarikçi']}, Order: {data['Order No']}, Takım: {data['Takım']}"
                             if data['Siparis_Gecikme'] > 0:
-                                prompt += f", Gecikme: {data['Siparis_Gecikme']} gün"
+                                prompt += f", Gecikme: {data['Siparis_Gecikme']} gün (Ceza: ₺{data.get('Ceza_Tutari', 0):,.0f})"
                             if data['Reklamasyon_Tutari'] > 0:
                                 prompt += f", Reklamasyon: ₺{data['Reklamasyon_Tutari']:,.0f}"
+                            if data.get('Reklamasyon_Edilmesi_Tutar', 0) > 0:
+                                prompt += f", Toplam Edilmesi Gereken: ₺{data.get('Reklamasyon_Edilmesi_Tutar', 0):,.0f}"
                         
                         prompt += """\n\nMail taslağında:
 1. Konu satırını belirt
