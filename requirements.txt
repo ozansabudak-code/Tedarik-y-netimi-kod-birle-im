@@ -10,3 +10,4 @@ openpyxl
 watchdog
 rapidfuzz
 numpy
+schedule

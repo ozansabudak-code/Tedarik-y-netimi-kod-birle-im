@@ -30,6 +30,10 @@ import io # Resim byte işlemleri için
 import webbrowser # Haber linkleri için
 import xml.etree.ElementTree as ET # RSS okumak için
 import random # Ticker simülasyonu için
+import logging # Loglama için
+import schedule # Zamanlanmış görevler için
+from collections import defaultdict # Activity tracking için
+from datetime import timedelta # Zaman hesaplamaları için
 
 # Harita kütüphanesi kontrolü
 try:
@@ -128,6 +132,409 @@ defect_images_rek = []
 frames = {} 
 menu_buttons = {} 
 current_page_name = None
+
+# ---------- GELİŞMİŞ LOGLAMa VE AKTİVİTE TAKİP SİSTEMİ ----------
+class ActivityLogger:
+    """Detaylı kullanıcı aktivite loglama ve raporlama sistemi"""
+    
+    def __init__(self):
+        self.user_name = getpass.getuser()
+        self.machine_name = socket.gethostname()
+        self.session_start = datetime.datetime.now()
+        self.log_file = f"activity_logs_{datetime.date.today()}.json"
+        self.activity_data = defaultdict(lambda: {
+            'clicks': 0,
+            'first_access': None,
+            'last_access': None,
+            'time_spent': 0,
+            'actions': []
+        })
+        self.session_data = []
+        
+        # Logging configuration
+        logging.basicConfig(
+            filename=f'system_log_{datetime.date.today()}.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        # Session başlangıcı
+        self.log_event("SESSION_START", f"Kullanıcı: {self.user_name}, Makine: {self.machine_name}")
+        logging.info(f"=== YENİ OTURUM BAŞLADI === User: {self.user_name}, Host: {self.machine_name}")
+        
+    def log_event(self, event_type, details, page=None):
+        """Olay loglama"""
+        timestamp = datetime.datetime.now()
+        
+        event_data = {
+            'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'user': self.user_name,
+            'machine': self.machine_name,
+            'event_type': event_type,
+            'page': page or current_page_name,
+            'details': details
+        }
+        
+        self.session_data.append(event_data)
+        logging.info(f"{event_type} | {page or 'N/A'} | {details}")
+        
+        # Save to JSON file
+        self._save_to_file()
+        
+    def log_page_visit(self, page_name):
+        """Sayfa ziyareti loglama"""
+        timestamp = datetime.datetime.now()
+        
+        if self.activity_data[page_name]['first_access'] is None:
+            self.activity_data[page_name]['first_access'] = timestamp
+        
+        self.activity_data[page_name]['last_access'] = timestamp
+        self.activity_data[page_name]['clicks'] += 1
+        
+        self.log_event("PAGE_VISIT", f"Sayfa açıldı: {page_name}", page_name)
+        
+    def log_button_click(self, button_name, page=None):
+        """Buton tıklama loglama"""
+        self.log_event("BUTTON_CLICK", f"Buton: {button_name}", page)
+        
+    def log_data_load(self, file_name, record_count, page=None):
+        """Veri yükleme loglama"""
+        self.log_event("DATA_LOAD", f"Dosya: {file_name}, Kayıt: {record_count}", page)
+        
+    def log_export(self, export_type, file_name, page=None):
+        """Export işlemi loglama"""
+        self.log_event("EXPORT", f"Tip: {export_type}, Dosya: {file_name}", page)
+        
+    def log_email_sent(self, recipient, subject, page=None):
+        """Email gönderimi loglama"""
+        self.log_event("EMAIL_SENT", f"Alıcı: {recipient}, Konu: {subject}", page)
+        
+    def log_analysis(self, analysis_type, details, page=None):
+        """Analiz işlemi loglama"""
+        self.log_event("ANALYSIS", f"Tip: {analysis_type}, Detay: {details}", page)
+        
+    def log_error(self, error_message, page=None):
+        """Hata loglama"""
+        self.log_event("ERROR", error_message, page)
+        logging.error(f"HATA | {page or 'N/A'} | {error_message}")
+        
+    def _save_to_file(self):
+        """Log verilerini dosyaya kaydet"""
+        try:
+            # Mevcut verileri oku
+            if os.path.exists(self.log_file):
+                with open(self.log_file, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
+            else:
+                existing_data = []
+            
+            # Yeni verileri ekle
+            existing_data.extend(self.session_data)
+            
+            # Dosyaya yaz
+            with open(self.log_file, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, ensure_ascii=False, indent=2)
+            
+            # Session data'yı temizle (çift kayıt olmaması için)
+            self.session_data = []
+            
+        except Exception as e:
+            logging.error(f"Log dosyasına yazma hatası: {str(e)}")
+    
+    def get_session_duration(self):
+        """Oturum süresini hesapla"""
+        duration = datetime.datetime.now() - self.session_start
+        return duration
+    
+    def generate_daily_report(self):
+        """Günlük aktivite raporu oluştur"""
+        try:
+            # Log dosyasını oku
+            if not os.path.exists(self.log_file):
+                return "Bugün için log verisi bulunamadı."
+            
+            with open(self.log_file, 'r', encoding='utf-8') as f:
+                logs = json.load(f)
+            
+            # İstatistikleri hesapla
+            page_stats = defaultdict(int)
+            button_clicks = defaultdict(int)
+            data_loads = []
+            exports = []
+            emails = []
+            errors = []
+            
+            for log in logs:
+                event_type = log.get('event_type')
+                page = log.get('page', 'N/A')
+                
+                if event_type == 'PAGE_VISIT':
+                    page_stats[page] += 1
+                elif event_type == 'BUTTON_CLICK':
+                    button_clicks[log['details']] += 1
+                elif event_type == 'DATA_LOAD':
+                    data_loads.append(log)
+                elif event_type == 'EXPORT':
+                    exports.append(log)
+                elif event_type == 'EMAIL_SENT':
+                    emails.append(log)
+                elif event_type == 'ERROR':
+                    errors.append(log)
+            
+            # Rapor HTML'i oluştur
+            report_html = f"""
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+                    .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 20px; }}
+                    .header h1 {{ margin: 0; font-size: 28px; }}
+                    .header p {{ margin: 5px 0 0 0; opacity: 0.9; }}
+                    .section {{ background: white; padding: 20px; margin: 15px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                    .section h2 {{ color: #667eea; margin-top: 0; border-bottom: 2px solid #667eea; padding-bottom: 10px; }}
+                    .stat-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 15px 0; }}
+                    .stat-card {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; }}
+                    .stat-card .number {{ font-size: 32px; font-weight: bold; margin: 10px 0; }}
+                    .stat-card .label {{ font-size: 14px; opacity: 0.9; }}
+                    table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+                    th {{ background-color: #667eea; color: white; padding: 12px; text-align: left; }}
+                    td {{ padding: 10px; border-bottom: 1px solid #eee; }}
+                    tr:hover {{ background-color: #f9f9f9; }}
+                    .time {{ color: #888; font-size: 0.9em; }}
+                    .error {{ color: #e74c3c; font-weight: bold; }}
+                    .success {{ color: #27ae60; font-weight: bold; }}
+                    .warning {{ color: #f39c12; }}
+                    .footer {{ text-align: center; color: #888; margin-top: 30px; padding: 20px; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>📊 Günlük Aktivite Raporu</h1>
+                    <p>Kullanıcı: <strong>{self.user_name}</strong> | Makine: <strong>{self.machine_name}</strong></p>
+                    <p>Tarih: <strong>{datetime.date.today().strftime('%d.%m.%Y')}</strong> | Rapor Saati: <strong>{datetime.datetime.now().strftime('%H:%M:%S')}</strong></p>
+                </div>
+                
+                <div class="section">
+                    <h2>📈 Genel İstatistikler</h2>
+                    <div class="stat-grid">
+                        <div class="stat-card">
+                            <div class="number">{len(logs)}</div>
+                            <div class="label">Toplam Aktivite</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number">{len(page_stats)}</div>
+                            <div class="label">Ziyaret Edilen Sayfa</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number">{sum(page_stats.values())}</div>
+                            <div class="label">Toplam Sayfa Tıklama</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number">{len(exports)}</div>
+                            <div class="label">Export İşlemi</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number">{len(emails)}</div>
+                            <div class="label">Gönderilen Mail</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="number">{len(errors)}</div>
+                            <div class="label">Hata Sayısı</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>🖱️ Sayfa Ziyaret İstatistikleri</h2>
+                    <table>
+                        <tr>
+                            <th>Sayfa Adı</th>
+                            <th>Ziyaret Sayısı</th>
+                            <th>Yüzde</th>
+                        </tr>
+            """
+            
+            total_visits = sum(page_stats.values())
+            for page, count in sorted(page_stats.items(), key=lambda x: x[1], reverse=True):
+                percentage = (count / total_visits * 100) if total_visits > 0 else 0
+                report_html += f"""
+                        <tr>
+                            <td>{page}</td>
+                            <td><strong>{count}</strong></td>
+                            <td><span class="warning">{percentage:.1f}%</span></td>
+                        </tr>
+                """
+            
+            report_html += """
+                    </table>
+                </div>
+            """
+            
+            # Veri yükleme işlemleri
+            if data_loads:
+                report_html += """
+                <div class="section">
+                    <h2>📂 Veri Yükleme İşlemleri</h2>
+                    <table>
+                        <tr>
+                            <th>Zaman</th>
+                            <th>Sayfa</th>
+                            <th>Detaylar</th>
+                        </tr>
+                """
+                for log in data_loads:
+                    report_html += f"""
+                        <tr>
+                            <td class="time">{log['timestamp']}</td>
+                            <td>{log['page']}</td>
+                            <td class="success">{log['details']}</td>
+                        </tr>
+                    """
+                report_html += """
+                    </table>
+                </div>
+                """
+            
+            # Export işlemleri
+            if exports:
+                report_html += """
+                <div class="section">
+                    <h2>💾 Export İşlemleri</h2>
+                    <table>
+                        <tr>
+                            <th>Zaman</th>
+                            <th>Sayfa</th>
+                            <th>Detaylar</th>
+                        </tr>
+                """
+                for log in exports:
+                    report_html += f"""
+                        <tr>
+                            <td class="time">{log['timestamp']}</td>
+                            <td>{log['page']}</td>
+                            <td class="success">{log['details']}</td>
+                        </tr>
+                    """
+                report_html += """
+                    </table>
+                </div>
+                """
+            
+            # Email gönderimler
+            if emails:
+                report_html += """
+                <div class="section">
+                    <h2>📧 Email Gönderim İşlemleri</h2>
+                    <table>
+                        <tr>
+                            <th>Zaman</th>
+                            <th>Sayfa</th>
+                            <th>Detaylar</th>
+                        </tr>
+                """
+                for log in emails:
+                    report_html += f"""
+                        <tr>
+                            <td class="time">{log['timestamp']}</td>
+                            <td>{log['page']}</td>
+                            <td class="success">{log['details']}</td>
+                        </tr>
+                    """
+                report_html += """
+                    </table>
+                </div>
+                """
+            
+            # Hatalar
+            if errors:
+                report_html += """
+                <div class="section">
+                    <h2>⚠️ Hata Kayıtları</h2>
+                    <table>
+                        <tr>
+                            <th>Zaman</th>
+                            <th>Sayfa</th>
+                            <th>Hata Mesajı</th>
+                        </tr>
+                """
+                for log in errors:
+                    report_html += f"""
+                        <tr>
+                            <td class="time">{log['timestamp']}</td>
+                            <td>{log['page']}</td>
+                            <td class="error">{log['details']}</td>
+                        </tr>
+                    """
+                report_html += """
+                    </table>
+                </div>
+                """
+            
+            report_html += """
+                <div class="footer">
+                    <p>Bu rapor <strong>Tedarik ve Reklamasyon Yönetim Sistemi</strong> tarafından otomatik olarak oluşturulmuştur.</p>
+                    <p>© 2026 DeFacto - Tedarik Zinciri Ekibi</p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            return report_html
+            
+        except Exception as e:
+            logging.error(f"Rapor oluşturma hatası: {str(e)}")
+            return f"Rapor oluşturulurken hata: {str(e)}"
+    
+    def send_daily_report_email(self):
+        """Günlük raporu email ile gönder"""
+        try:
+            report_html = self.generate_daily_report()
+            
+            # Email oluştur
+            msg = MIMEMultipart('related')
+            msg['Subject'] = f"Günlük Aktivite Raporu - {datetime.date.today().strftime('%d.%m.%Y')} - {self.user_name}"
+            msg['From'] = GMAIL_USER
+            msg['To'] = GMAIL_RECEIVER_LOGS
+            
+            msg_alternative = MIMEMultipart('alternative')
+            msg.attach(msg_alternative)
+            msg_alternative.attach(MIMEText(report_html, 'html'))
+            
+            # JSON log dosyasını ekle
+            if os.path.exists(self.log_file):
+                with open(self.log_file, 'rb') as f:
+                    part = MIMEBase('application', 'json')
+                    part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', f'attachment; filename="{self.log_file}"')
+                    msg.attach(part)
+            
+            # Gönder
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+            server.quit()
+            
+            logging.info(f"Günlük rapor email ile gönderildi: {GMAIL_RECEIVER_LOGS}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Email gönderme hatası: {str(e)}")
+            return False
+    
+    def close_session(self):
+        """Oturumu kapat ve son raporu gönder"""
+        duration = self.get_session_duration()
+        self.log_event("SESSION_END", f"Oturum süresi: {duration}")
+        logging.info(f"=== OTURUM SONLANDI === Süre: {duration}")
+        
+        # Son verileri kaydet
+        self._save_to_file()
+
+# Global activity logger
+activity_logger = None
 
 # ---------- TICKER (KAYAN BANT) FONKSİYONLARI ----------
 def fetch_yahoo_finance_data(symbol):
@@ -2529,8 +2936,17 @@ def export_data(data, format_type, sheet_name=None, filename=None):
             with pd.ExcelWriter(filename, engine='openpyxl') as writer: data.to_excel(writer, sheet_name=sheet_name or "Veri", index=False)
         elif format_type == "pdf": export_df_to_pdf(data, filename)
         elif format_type == "docx": export_df_to_docx(data, filename)
+        
+        # LOG: Export başarılı
+        if activity_logger:
+            activity_logger.log_export(format_type.upper(), os.path.basename(filename))
+        
         messagebox.showinfo("Başarılı", "Kaydedildi.")
-    except Exception as e: messagebox.showerror("Hata", str(e))
+    except Exception as e: 
+        # LOG: Export hatası
+        if activity_logger:
+            activity_logger.log_error(f"Export hatası ({format_type}): {str(e)}")
+        messagebox.showerror("Hata", str(e))
 
 def export_df_to_pdf(df, filename):
     pdf = FPDF(); pdf.add_font('DejaVuSans', '', 'DejaVuSans.ttf', uni=True) if os.path.exists('DejaVuSans.ttf') else pdf.set_font("Arial", size=10)
@@ -2567,6 +2983,11 @@ def export_ai_comment(format_type, filename=None):
 
 def send_email_with_attachments(to_email, subject, body, attachment_paths):
     if not GMAIL_USER or not GMAIL_APP_PASSWORD: return False, "Ayarlar eksik."
+    
+    # LOG: Email gönderimi başladı
+    if activity_logger:
+        activity_logger.log_email_sent(to_email, subject)
+    
     msg = MIMEMultipart(); msg['From'] = GMAIL_USER; msg['To'] = to_email; msg['Subject'] = subject; msg.attach(MIMEText(body, 'plain'))
     for path in attachment_paths:
         try:
@@ -2576,8 +2997,18 @@ def send_email_with_attachments(to_email, subject, body, attachment_paths):
         except: pass
     try:
         server = smtplib.SMTP('smtp.gmail.com', 587); server.starttls(); server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, to_email.split(','), msg.as_string()); server.quit(); return True, "Gönderildi."
-    except Exception as e: return False, str(e)
+        server.sendmail(GMAIL_USER, to_email.split(','), msg.as_string()); server.quit(); 
+        
+        # LOG: Email başarıyla gönderildi
+        if activity_logger:
+            activity_logger.log_event("EMAIL_SUCCESS", f"Mail başarıyla gönderildi: {to_email}")
+        
+        return True, "Gönderildi."
+    except Exception as e: 
+        # LOG: Email hatası
+        if activity_logger:
+            activity_logger.log_error(f"Email hatası: {str(e)}")
+        return False, str(e)
 
 def send_report_email():
     if sonuc_global is None: messagebox.showerror("Hata", "Analiz yok."); return
@@ -2768,12 +3199,21 @@ def analiz_et_with_options(dosyalar, stok_kod):
     global df_global, tedarikci_col_global, sonuc_global, message_global, grafik_ozet_global, outliers_global
     global stok_grup_col_global, detay_sonuc_global, market_averages_global
     try:
+        # LOG: Analiz başlatıldı
+        if activity_logger:
+            file_names = ", ".join([os.path.basename(f) for f in dosyalar])
+            activity_logger.log_analysis("TEDARIKCI_ANALIZ", f"Dosyalar: {file_names}, Stok: {stok_kod or 'Tümü'}", "Analiz")
+        
         threading.Thread(target=lambda: send_usage_log_email(f"Analiz: {len(dosyalar)} dosya")).start()
         root.after(0, lambda: ai_status_label.config(text="Okunuyor..."))
         
         df_list = [pd.read_csv(f, dtype=str) if f.endswith('.csv') else pd.read_excel(f, dtype=str) for f in dosyalar]
         df = pd.concat(df_list, ignore_index=True)
         df_global = df.copy()
+        
+        # LOG: Veri yüklendi
+        if activity_logger:
+            activity_logger.log_data_load(file_names, len(df), "Analiz")
         
         stok_col = find_stok_kodu_column(df) or df.columns[0]
         ted_col = find_col_by_keywords(df, ["tedarik", "supplier"])
@@ -3082,6 +3522,10 @@ def show_page(page_name):
     global current_page_name
     current_page_name = page_name
     
+    # LOG: Sayfa ziyareti
+    if activity_logger:
+        activity_logger.log_page_visit(page_name)
+    
     for frame in frames.values():
         frame.pack_forget()
     
@@ -3349,9 +3793,38 @@ def on_closing():
             pass
 
 if __name__ == "__main__":
+    # Activity logger'ı başlat
+    activity_logger = ActivityLogger()
+    
+    # Zamanlanmış görevleri ayarla
+    def scheduled_report_sender():
+        """Zamanlanmış rapor gönderici"""
+        while True:
+            schedule.run_pending()
+            threading.Event().wait(60)  # Her 60 saniyede bir kontrol et
+    
+    # Günlük saat 16:00'da rapor gönder
+    schedule.every().day.at("16:00").do(activity_logger.send_daily_report_email)
+    
+    # Periyodik raporlar (her 4 saatte bir)
+    schedule.every(4).hours.do(activity_logger.send_daily_report_email)
+    
+    # Scheduler thread'i başlat
+    scheduler_thread = threading.Thread(target=scheduled_report_sender, daemon=True)
+    scheduler_thread.start()
+    
+    activity_logger.log_event("APP_START", "Uygulama başlatıldı")
+    
     load_settings()
-    root.protocol("WM_DELETE_WINDOW", on_closing)
+    
+    # Kapanış fonksiyonunu güncelle
+    def on_closing_with_log():
+        activity_logger.log_event("APP_CLOSE", "Uygulama kapatılıyor")
+        activity_logger.close_session()
+        on_closing()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing_with_log)
     try:
         root.mainloop()
     except KeyboardInterrupt:
-        on_closing()
+        on_closing_with_log()

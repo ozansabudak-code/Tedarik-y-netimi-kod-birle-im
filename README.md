@@ -4,6 +4,20 @@
 
 Bu proje, iki ayrı tedarikçi yönetim sistemini birleştirerek kapsamlı bir çözüm sunmaktadır.
 
+## ⭐ YENİ: Gelişmiş Aktivite Loglama Sistemi (v2.8)
+
+**Detaylı kullanıcı aktivite takibi ve otomatik raporlama!**
+
+- 📊 **Otomatik Günlük Raporlar**: Her gün saat 16:00'da email ile
+- ⏱️ **Periyodik Raporlar**: Her 4 saatte bir durum raporu
+- 🖱️ **Detaylı Aktivite İzleme**: Sayfa ziyaretleri, tıklamalar, export'lar
+- 📧 **Email Takibi**: Kime ne zaman mail gönderildi
+- 💾 **JSON & Log Dosyaları**: Machine-readable formatda kayıtlar
+- ⚠️ **Hata İzleme**: Tüm sistem hataları loglanır
+- 📈 **İstatistiksel Raporlar**: HTML formatında profesyonel raporlar
+
+👉 Detaylar için [LOGLAMA_KILAVUZU.md](LOGLAMA_KILAVUZU.md) dosyasına bakın
+
 ## Dosya Yapısı
 
 - **birinci kodum**: Orijinal tedarikçi performans analiz sistemi
