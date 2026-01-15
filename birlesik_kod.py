@@ -1000,25 +1000,77 @@ def init_rek_detailed_report_tab():
 
     def setup_summary_tab():
         exp_frame = tk.Frame(tab_ozet, bg="white", pady=5); exp_frame.pack(fill="x", padx=10)
-        current_summary = pd.DataFrame()
-        btn_xls = tk.Button(exp_frame, text="Tüm Özeti Excel'e Aktar", bg="#27ae60", fg="white", font=("Segoe UI", 9), command=lambda: export_rek_df_to_excel(current_summary, "Rek_Yonetici_Ozeti")); btn_xls.pack(side="right", padx=5)
-        btn_pdf = tk.Button(exp_frame, text="PDF Yap", bg="#c0392b", fg="white", font=("Segoe UI", 9), command=lambda: export_rek_df_to_pdf(current_summary, "Reklamasyon Yönetici Özeti", "Rek_Yonetici_Raporu")); btn_pdf.pack(side="right", padx=5)
+        current_summary1 = pd.DataFrame(); current_summary2 = pd.DataFrame()
+        btn_xls = tk.Button(exp_frame, text="Tüm Özeti Excel'e Aktar", bg="#27ae60", fg="white", font=("Segoe UI", 9), command=lambda: export_rek_df_to_excel(current_summary1 if not current_summary1.empty else current_summary2, "Rek_Yonetici_Ozeti")); btn_xls.pack(side="right", padx=5)
+        btn_pdf = tk.Button(exp_frame, text="PDF Yap", bg="#c0392b", fg="white", font=("Segoe UI", 9), command=lambda: export_rek_df_to_pdf(current_summary1 if not current_summary1.empty else current_summary2, "Reklamasyon Yönetici Özeti", "Rek_Yonetici_Raporu")); btn_pdf.pack(side="right", padx=5)
 
-        f1 = tk.LabelFrame(tab_ozet, text="Takım Bazlı Reklamasyon Özeti", font=("Segoe UI", 10, "bold"), bg="white", padx=10, pady=5); f1.pack(fill="both", expand=True, padx=10, pady=5)
-        cols1 = ["Takım", "Toplam Alım", "İade Tutarı", "Reklamasyon Tutarı", "Toplam Risk"]
-        t1 = ttk.Treeview(f1, columns=cols1, show="headings", height=12)
+        df_rek = df_reklamasyon_global[df_reklamasyon_global["Islem_Tipi"].isin(["İade", "Reklamasyon"])].copy() if df_reklamasyon_global is not None else pd.DataFrame()
+        df_proc = df_reklamasyon_global.copy() if df_reklamasyon_global is not None else pd.DataFrame()
+        
+        # --- TÜM VERİYİ KAPSAYAN MERGE HAZIRLIĞI ---
+        # 1. Ceza Verisi (Gecikme olan tüm satırlardan)
+        ceza_summary = pd.DataFrame(columns=["Order Grup Adı", "Cari Adı", "Row_Ceza"])
+        if not df_proc.empty:
+             for col in ["Alim_Tutari", "Iade_Tutari", "Siparis_Gecikme"]:
+                 if col in df_proc.columns: df_proc[col] = df_proc[col].fillna(0)
+             # Order bazında gecikme ve cezayı hesapla
+             grp_det = df_proc.groupby(["Cari Adı", "Order No", "Order Grup Adı"]).agg({"Siparis_Gecikme": "max", "Alim_Tutari": "sum", "Iade_Tutari": "sum"}).reset_index()
+             def calc_penalty(r):
+                 s_gec = r["Siparis_Gecikme"]; ceza_orani = 0.0
+                 if s_gec > 0:
+                     if s_gec < 7: ceza_orani = 0.05
+                     elif 7 <= s_gec <= 15: ceza_orani = 0.10
+                     else: ceza_orani = 0.25
+                 return (r["Alim_Tutari"] - r["Iade_Tutari"]) * ceza_orani
+             grp_det["Row_Ceza"] = grp_det.apply(calc_penalty, axis=1)
+             ceza_summary = grp_det.groupby(["Order Grup Adı", "Cari Adı"])["Row_Ceza"].sum().reset_index()
+
+        # 2. İade/Reklamasyon Verisi
+        rek_summary = pd.DataFrame(columns=["Order Grup Adı", "Cari Adı", "Reklamasyon_Tutari", "Iade_Tutari", "Kesinti_Gecikme", "Kesinti_Kalite"])
+        if not df_rek.empty:
+            rek_summary = df_rek.groupby(["Order Grup Adı", "Cari Adı"]).agg({"Reklamasyon_Tutari": "sum", "Iade_Tutari": "sum", "Kesinti_Gecikme": "sum", "Kesinti_Kalite": "sum"}).reset_index()
+
+        # 3. OUTER MERGE (Kapsayıcı Birleştirme)
+        # Hem ceza verisini hem de iade/reklamasyon verisini kaybetmemek için outer join yapıyoruz.
+        if ceza_summary.empty and rek_summary.empty:
+             merged_data = pd.DataFrame(columns=["Order Grup Adı", "Cari Adı", "Row_Ceza", "Reklamasyon_Tutari", "Iade_Tutari", "Kesinti_Gecikme", "Kesinti_Kalite"])
+        else:
+             merged_data = pd.merge(rek_summary, ceza_summary, on=["Order Grup Adı", "Cari Adı"], how="outer").fillna(0)
+        
+        current_summary1 = merged_data # Export için
+
+        f1 = tk.LabelFrame(tab_ozet, text="1. Takım ve Tedarikçi Detaylı Analiz", font=("Segoe UI", 10, "bold"), bg="white", padx=10, pady=5); f1.pack(fill="both", expand=True, padx=10, pady=5)
+        cols1 = ["Takım", "Cari Adı", "Kesilmesi Gereken (Ceza)", "Reklamasyon Tutarı (52)", "İade Tutarı (63)", "Kesilen Reklamasyon - Gecikme", "Kesilen Reklamasyon - Kalite"]
+        t1 = ttk.Treeview(f1, columns=cols1, show="headings", height=6)
         sb1 = ttk.Scrollbar(f1, orient="vertical", command=t1.yview); t1.configure(yscrollcommand=sb1.set)
         t1.grid(row=0, column=0, sticky='nsew'); sb1.grid(row=0, column=1, sticky='ns')
         f1.grid_columnconfigure(0, weight=1); f1.grid_rowconfigure(0, weight=1)
-        for c in cols1: t1.heading(c, text=c); t1.column(c, anchor="e" if c != "Takım" else "w", width=120)
+        for c in cols1: t1.heading(c, text=c); t1.column(c, anchor="e" if "Tutarı" in c or "Kesilen" in c or "Ceza" in c else "w", width=110)
 
-        if df_reklamasyon_global is not None:
-            grp = df_reklamasyon_global.groupby("Order Grup Adı").agg({"Alim_Tutari": "sum", "Iade_Tutari": "sum", "Reklamasyon_Tutari": "sum"}).reset_index()
-            grp["Toplam_Risk"] = grp["Iade_Tutari"] + grp["Reklamasyon_Tutari"]
-            grp = grp.sort_values("Toplam_Risk", ascending=False)
-            current_summary = grp
-            for i, r in grp.iterrows():
-                t1.insert("", "end", values=(r["Order Grup Adı"], f"₺{r['Alim_Tutari']:,.0f}", f"₺{r['Iade_Tutari']:,.0f}", f"₺{r['Reklamasyon_Tutari']:,.0f}", f"₺{r['Toplam_Risk']:,.0f}"))
+        t1_ceza=0; t1_rek=0; t1_iade=0; t1_gec=0; t1_kal=0
+        for i, r in merged_data.iterrows():
+            t1.insert("", "end", values=(r["Order Grup Adı"], r["Cari Adı"], f"₺{r['Row_Ceza']:,.0f}", f"₺{r['Reklamasyon_Tutari']:,.0f}", f"₺{r['Iade_Tutari']:,.0f}", f"₺{r['Kesinti_Gecikme']:,.0f}", f"₺{r['Kesinti_Kalite']:,.0f}"))
+            t1_ceza+=r['Row_Ceza']; t1_rek+=r['Reklamasyon_Tutari']; t1_iade+=r['Iade_Tutari']; t1_gec+=r['Kesinti_Gecikme']; t1_kal+=r['Kesinti_Kalite']
+        # Tablo 1 Alt Toplam
+        t1.insert("", "end", values=("GENEL TOPLAM", "", f"₺{t1_ceza:,.0f}", f"₺{t1_rek:,.0f}", f"₺{t1_iade:,.0f}", f"₺{t1_gec:,.0f}", f"₺{t1_kal:,.0f}"), tags=('bold',)); t1.tag_configure('bold', font=('Segoe UI', 10, 'bold'), background='#cfd8dc')
+
+
+        f2 = tk.LabelFrame(tab_ozet, text="2. Takım Genel Özeti", font=("Segoe UI", 10, "bold"), bg="white", padx=10, pady=5); f2.pack(fill="both", expand=True, padx=10, pady=5)
+        cols2 = ["Takım", "Gereken Ceza (Hesaplanan)", "Reklamasyon Tutarı (52)", "İade Tutarı (63)", "Kesilen Reklamasyon - Gecikme", "Kesilen Reklamasyon - Kalite"]
+        t2 = ttk.Treeview(f2, columns=cols2, show="headings", height=6)
+        sb2 = ttk.Scrollbar(f2, orient="vertical", command=t2.yview); t2.configure(yscrollcommand=sb2.set)
+        t2.grid(row=0, column=0, sticky='nsew'); sb2.grid(row=0, column=1, sticky='ns')
+        f2.grid_columnconfigure(0, weight=1); f2.grid_rowconfigure(0, weight=1)
+        for c in cols2: t2.heading(c, text=c); t2.column(c, anchor="e" if "Tutarı" in c or "Kesilen" in c or "Ceza" in c else "w", width=120)
+
+        if not merged_data.empty:
+            grp2 = merged_data.groupby("Order Grup Adı").agg({"Row_Ceza": "sum", "Reklamasyon_Tutari": "sum", "Iade_Tutari": "sum", "Kesinti_Gecikme": "sum", "Kesinti_Kalite": "sum"}).reset_index()
+            current_summary2 = grp2
+            t_ceza=0; t_rek=0; t_iade=0; t_gec=0; t_kal=0
+            for i, r in grp2.iterrows():
+                t2.insert("", "end", values=(r["Order Grup Adı"], f"₺{r['Row_Ceza']:,.0f}", f"₺{r['Reklamasyon_Tutari']:,.0f}", f"₺{r['Iade_Tutari']:,.0f}", f"₺{r['Kesinti_Gecikme']:,.0f}", f"₺{r['Kesinti_Kalite']:,.0f}"))
+                t_ceza+=r['Row_Ceza']; t_rek+=r['Reklamasyon_Tutari']; t_iade+=r['Iade_Tutari']; t_gec+=r['Kesinti_Gecikme']; t_kal+=r['Kesinti_Kalite']
+            t2.insert("", "end", values=("TOPLAM", f"₺{t_ceza:,.0f}", f"₺{t_rek:,.0f}", f"₺{t_iade:,.0f}", f"₺{t_gec:,.0f}", f"₺{t_kal:,.0f}"), tags=('bold',)); t2.tag_configure('bold', font=('Segoe UI', 10, 'bold'), background='#cfd8dc')
 
     setup_detail_tab(); setup_summary_tab()
 
