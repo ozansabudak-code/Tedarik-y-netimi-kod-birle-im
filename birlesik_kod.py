@@ -648,37 +648,71 @@ def init_news_tab():
     fetch_and_display_news(scrollable_frame)
 
 def fetch_and_display_news(parent_frame):
-    """Google News RSS'den tekstil haberlerini çeker (ARKA PLANDA - DONMA YAPMAZ)."""
+    """
+    Google News RSS'den verileri çeker.
+    Özellikler:
+    1. Threading: Arayüzü dondurmaz.
+    2. User-Agent Header: Google'ın bot korumasını aşar.
+    3. Error Handling: Bağlantı hatalarını yönetir.
+    """
     # Önceki içeriği temizle
     for widget in parent_frame.winfo_children(): widget.destroy()
     
-    # Yükleniyor mesajı
-    loading = tk.Label(parent_frame, text="Haberler yükleniyor...", font=("Segoe UI", 12), bg="#ecf0f1")
+    # Yükleniyor mesajı (Kullanıcı işlem yapıldığını görsün)
+    loading = tk.Label(parent_frame, text="Haberler alınıyor... Lütfen bekleyin.", 
+                      font=("Segoe UI", 12, "italic"), fg="gray", bg="#ecf0f1")
     loading.pack(pady=20)
     
-    # --- ARKA PLAN İŞLEMİ ---
+    # Arayüzü zorla güncelle (Mesajın hemen görünmesi için)
+    parent_frame.update()
+    
+    # --- ARKA PLAN İŞÇİSİ (Thread) ---
     def _bg_task():
+        # Google'ın bizi "Python Script" değil "Chrome Tarayıcısı" sanması için Header
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        # Tekstil ve ekonomi odaklı RSS adresi
         rss_url = "https://news.google.com/rss/search?q=tekstil+OR+hazır+giyim+OR+kumaş+OR+konfeksiyon+OR+iplik+when:7d&hl=tr&gl=TR&ceid=TR:tr"
+        
         try:
-            # Timeout süresini kısalttık (5 saniye)
-            response = requests.get(rss_url, timeout=5)
-            xml_content = response.content
-            # Veri geldi, arayüzü güncellemek için ana thread'e sinyal gönder
-            root.after(0, lambda: _update_ui(xml_content))
+            # timeout=10: 10 saniye cevap gelmezse işlemi iptal et (Sonsuz donmayı önler)
+            response = requests.get(rss_url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                # Veri başarıyla geldi, ham XML içeriğini al
+                xml_content = response.content
+                # Arayüz güncellemesi için Ana Thread'e sinyal gönder
+                root.after(0, lambda: _update_ui_success(xml_content))
+            else:
+                # HTTP Hatası (404, 429, 500 vb.)
+                error_msg = f"HTTP Hatası: {response.status_code}"
+                root.after(0, lambda: _update_ui_error(error_msg))
+                activity_logger.log_error(f"News RSS HTTP {response.status_code}", "Sektör Haberleri")
+                
         except Exception as e:
-            # Hata varsa ekrana yazdır
-            error_msg = f"Bağlantı hatası (VPN deneyin): {str(e)[:50]}..."
-            root.after(0, lambda: loading.config(text=error_msg, fg="red"))
-            # Activity logger'a kaydet
+            # Bağlantı Hatası (Network, Timeout vb.)
+            error_msg = f"Bağlantı Hatası: {str(e)}"
+            root.after(0, lambda: _update_ui_error(error_msg))
             activity_logger.log_error(f"News RSS hatası: {str(e)}", "Sektör Haberleri")
 
-    # --- ARAYÜZ GÜNCELLEME ---
-    def _update_ui(xml_data):
+    # --- ARAYÜZ GÜNCELLEME (Başarılı) ---
+    def _update_ui_success(xml_data):
         try:
             loading.destroy()
             root_xml = ET.fromstring(xml_data)
             count = 0
-            for item in root_xml.findall('./channel/item'):
+            
+            # Haber bulunamadı kontrolü
+            items = root_xml.findall('./channel/item')
+            if not items:
+                no_news = tk.Label(parent_frame, text="Haber bulunamadı. Lütfen daha sonra tekrar deneyin.", 
+                                  font=("Segoe UI", 12), fg="gray", bg="#ecf0f1")
+                no_news.pack(pady=20)
+                return
+            
+            for item in items:
                 if count > 15: break # Max 15 haber
                 
                 title = item.find('title').text
@@ -700,8 +734,19 @@ def fetch_and_display_news(parent_frame):
                 count += 1
         except Exception as e:
             # XML parse hatası
-            loading.config(text=f"Haberler işlenemedi: {str(e)[:50]}...", fg="red")
+            _update_ui_error(f"XML Parse Hatası: {str(e)[:50]}...")
             activity_logger.log_error(f"News XML parse hatası: {str(e)}", "Sektör Haberleri")
+    
+    # --- ARAYÜZ GÜNCELLEME (Hata) ---
+    def _update_ui_error(error_message):
+        """Hata mesajını ekranda göster"""
+        loading.config(
+            text=f"❌ {error_message}\n\n💡 İpucu: VPN kullanmayı deneyin veya biraz bekleyip tekrar deneyin.",
+            fg="red",
+            font=("Segoe UI", 10),
+            wraplength=700,
+            justify="center"
+        )
     
     # Thread'i başlat (daemon=True: ana program kapanınca otomatik sonlanır)
     threading.Thread(target=_bg_task, daemon=True).start()
