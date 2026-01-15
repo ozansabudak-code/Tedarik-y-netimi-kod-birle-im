@@ -1053,12 +1053,9 @@ Yanıtını Türkçe, profesyonel ve kısa tut.
         ai_text.config(state="disabled")
 
 # ---------- SİPARİŞ AŞAMA TAKİBİ - GANT PLANI (PRODUCTION PIPELINE) ----------
-# Global değişkenler
-production_orders_global = {}
-gantt_canvas_global = None
 
 def init_production_pipeline_tab():
-    """Sipariş Aşama Takibi - GANT Planı sekmesini oluşturur"""
+    """Sipariş Aşama Takibi - Gantt Planı sekmesini oluşturur"""
     global frame_production_pipeline
     
     for widget in frame_production_pipeline.winfo_children(): widget.destroy()
@@ -1229,7 +1226,7 @@ def init_production_pipeline_tab():
         ax.set_xticklabels([''] + stages, rotation=15, ha='right', fontsize=9)
         ax.set_xlabel('Üretim Aşamaları', fontsize=10, fontweight='bold')
         ax.set_ylabel('Siparişler', fontsize=10, fontweight='bold')
-        ax.set_title('Tekstil Üretim Hattı - GANT Planı', fontsize=12, fontweight='bold')
+        ax.set_title('Tekstil Üretim Hattı - Gantt Planı', fontsize=12, fontweight='bold')
         ax.set_xlim(0, len(stages))
         ax.grid(axis='x', alpha=0.3, linestyle='--')
         
@@ -1276,9 +1273,11 @@ def init_production_pipeline_tab():
     draw_gantt_chart()
 
 # ---------- HAMMADDE FİYAT İSTİHBARATI (COMMODITY INTELLIGENCE) ----------
-# Global değişkenler
-commodity_prices_global = {}
-commodity_history_global = {}
+# Price simulation constants
+PRICE_VARIANCE_FACTOR = 0.15  # ±15% price fluctuation
+TREND_START_FACTOR = 0.90     # Trend starts at 90% of current price
+PRICE_BLEND_RATIO = 0.7       # 70% random, 30% trend
+TREND_BLEND_RATIO = 0.3       # Complement of PRICE_BLEND_RATIO
 
 def init_commodity_intelligence_tab():
     """Hammadde Fiyat İstihbaratı sekmesini oluşturur"""
@@ -1371,10 +1370,10 @@ def init_commodity_intelligence_tab():
             for days in [30, 90, 365]:
                 dates = [(datetime.datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days, -1, -1)]
                 # Rastgele fiyat dalgalanması oluştur
-                prices = [base_price + random.uniform(-base_price*0.15, base_price*0.15) for _ in dates]
+                prices = [base_price + random.uniform(-base_price*PRICE_VARIANCE_FACTOR, base_price*PRICE_VARIANCE_FACTOR) for _ in dates]
                 # Trend ekle
-                trend = np.linspace(base_price * 0.90, base_price, len(prices))
-                prices = [p * 0.7 + t * 0.3 for p, t in zip(prices, trend)]
+                trend = np.linspace(base_price * TREND_START_FACTOR, base_price, len(prices))
+                prices = [p * PRICE_BLEND_RATIO + t * TREND_BLEND_RATIO for p, t in zip(prices, trend)]
                 history[days] = {'dates': dates, 'prices': prices}
             
             commodity_history_global[commodity] = history
@@ -5213,7 +5212,7 @@ def show_page(page_name):
             btn.config(bg="#2c3e50", fg="white", relief="flat") 
 
 root = ThemedTk(theme="radiance")
-root.title("Tedarikçi Rapor Analiz v2.7 (Modern UI & Smart Order)")
+root.title("Tedarikçi Rapor Analiz v2.8 (Production Pipeline & Commodity Intelligence)")
 root.geometry("1280x850")
 # Ayarlar değişkenleri global olarak tanımlanır
 price_weight = tk.DoubleVar(value=0.4)
@@ -5363,7 +5362,7 @@ for text, name in menu_items:
     btn.pack(fill="x", pady=2)
     menu_buttons[name] = btn
 
-tk.Label(sidebar_content_frame, text="v2.7 | DeFacto", bg="#2c3e50", fg="#95a5a6", font=("Arial", 8)).pack(side="bottom", pady=10)
+tk.Label(sidebar_content_frame, text="v2.8 | DeFacto", bg="#2c3e50", fg="#95a5a6", font=("Arial", 8)).pack(side="bottom", pady=10)
 
 status_label = ttk.Label(content_area, text="Hazır", relief="sunken", anchor="w")
 status_label.pack(side="bottom", fill="x")
