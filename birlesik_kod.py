@@ -3432,21 +3432,6 @@ def update_summary_tab(num, price, deliv, ret, score, pareto_a, df=None):
 def _update_summary_tab(num, price, deliv, ret, score, pareto_a, df=None):
     draw_dashboard(frame_ozet, {"count": num, "price": f"{price:.2f}", "delivery": f"{deliv:.2f}", "return": f"{ret:.2f}", "score": f"{score:.2f}", "pareto_a": pareto_a}, df)
 
-def show_supplier_details(event):
-    if df_global is None: return
-    sel = supplier_combobox.get()
-    for i in supplier_treeview.get_children(): supplier_treeview.delete(i)
-    if not sel: return
-    for r in df_global[df_global[tedarikci_col_global] == sel].head(500).itertuples(index=False): supplier_treeview.insert('', 'end', values=r)
-
-def update_supplier_details_tab(df, t_col):
-    root.after(0, lambda: _update_supplier_details_tab(df, t_col))
-
-def _update_supplier_details_tab(df, t_col):
-    supplier_combobox['values'] = sorted(df[t_col].unique())
-    supplier_treeview['columns'] = list(df.columns)
-    for c in list(df.columns): supplier_treeview.heading(c, text=c); supplier_treeview.column(c, width=100)
-
 def show_comparison_chart():
     if df_global is None: return
     sel = [supplier_listbox.get(i) for i in supplier_listbox.curselection()]
@@ -4030,13 +4015,139 @@ monitor_frame = ttk.LabelFrame(frame_analiz, text="Otomatik Klasör İzleme"); m
 start_button = ttk.Button(monitor_frame, text="Başlat", command=start_monitoring); start_button.pack(side="left", padx=5, pady=5, expand=True)
 stop_button = ttk.Button(monitor_frame, text="Durdur", command=stop_monitoring, state="disabled"); stop_button.pack(side="right", padx=5, pady=5, expand=True)
 
-ttk.Label(frame_detaylar, text="Tedarikçi:").pack(); supplier_combobox = ttk.Combobox(frame_detaylar, state="readonly"); supplier_combobox.pack()
-supplier_combobox.bind("<<ComboboxSelected>>", show_supplier_details)
-supplier_treeview = ttk.Treeview(frame_detaylar, show='headings'); supplier_treeview.pack(expand=True, fill='both')
+# --- DETAYLAR SEKMESİ (Geliştirilmiş Filtreleme ile) ---
+def init_detaylar_tab():
+    """Detaylar sekmesini gelişmiş filtreleme ile başlatır"""
+    for widget in frame_detaylar.winfo_children(): widget.destroy()
+    
+    # Filtre Çubuğu
+    filter_frame = tk.Frame(frame_detaylar, bg="#f8f9fa", padx=10, pady=15, bd=1, relief="solid")
+    filter_frame.pack(fill="x", padx=10, pady=5)
+    
+    tk.Label(filter_frame, text="Tedarikçi:", bg="#f8f9fa", font=("Segoe UI", 9, "bold")).pack(side="left", padx=(0,5))
+    supplier_var = tk.StringVar(value="Tümü")
+    supplier_combo = ttk.Combobox(filter_frame, textvariable=supplier_var, state="readonly", width=25)
+    supplier_combo.pack(side="left", padx=5)
+    
+    tk.Label(filter_frame, text="|  Detaylı Arama:", bg="#f8f9fa", font=("Segoe UI", 9, "bold")).pack(side="left", padx=15)
+    search_col_var = tk.StringVar(value="Tümü")
+    search_col_combo = ttk.Combobox(filter_frame, textvariable=search_col_var, state="readonly", width=15)
+    search_col_combo.pack(side="left", padx=5)
+    entry_search = ttk.Entry(filter_frame, width=30)
+    entry_search.pack(side="left", padx=5)
+    
+    # Export Buttons
+    btn_xls = tk.Button(filter_frame, text="Excel", bg="#27ae60", fg="white", font=("Segoe UI", 8), command=lambda: export_detaylar_data("xlsx"))
+    btn_xls.pack(side="right", padx=5)
+    btn_pdf = tk.Button(filter_frame, text="PDF", bg="#c0392b", fg="white", font=("Segoe UI", 8), command=lambda: export_detaylar_data("pdf"))
+    btn_pdf.pack(side="right", padx=5)
+    
+    # Treeview
+    tree_frame = tk.Frame(frame_detaylar)
+    tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
+    
+    supplier_treeview_new = ttk.Treeview(tree_frame, show='headings', height=20)
+    vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=supplier_treeview_new.yview)
+    hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=supplier_treeview_new.xview)
+    supplier_treeview_new.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+    
+    supplier_treeview_new.grid(column=0, row=0, sticky='nsew')
+    vsb.grid(column=1, row=0, sticky='ns')
+    hsb.grid(column=0, row=1, sticky='ew')
+    tree_frame.grid_columnconfigure(0, weight=1)
+    tree_frame.grid_rowconfigure(0, weight=1)
+    
+    current_filtered_data = []
+    
+    def apply_detaylar_filters(event=None):
+        """Detaylar sekmesi filtrelerini uygular"""
+        nonlocal current_filtered_data
+        
+        # Treeview'i temizle
+        for i in supplier_treeview_new.get_children():
+            supplier_treeview_new.delete(i)
+        
+        if df_global is None or tedarikci_col_global is None:
+            return
+        
+        # Veriyi kopyala
+        df_filtered = df_global.copy()
+        
+        # Tedarikçi filtresi
+        selected_supplier = supplier_combo.get()
+        if selected_supplier and selected_supplier != "Tümü":
+            df_filtered = df_filtered[df_filtered[tedarikci_col_global] == selected_supplier]
+        
+        # Detaylı arama filtresi
+        search_text = entry_search.get().lower()
+        if search_text:
+            search_col = search_col_var.get()
+            if search_col == "Tümü":
+                # Tüm kolonlarda ara
+                mask = df_filtered.apply(lambda row: any(search_text in str(val).lower() for val in row), axis=1)
+                df_filtered = df_filtered[mask]
+            else:
+                # Belirli bir kolonda ara
+                if search_col in df_filtered.columns:
+                    df_filtered = df_filtered[df_filtered[search_col].astype(str).str.lower().str.contains(search_text, na=False)]
+        
+        # Sonuçları göster (maksimum 1000 satır)
+        current_filtered_data = df_filtered.head(1000)
+        
+        for row in current_filtered_data.itertuples(index=False):
+            supplier_treeview_new.insert('', 'end', values=row)
+    
+    def export_detaylar_data(format_type):
+        """Detaylar verilerini export et"""
+        if not current_filtered_data or len(current_filtered_data) == 0:
+            messagebox.showwarning("Uyarı", "Export edilecek veri bulunamadı!")
+            return
+        
+        df_export = pd.DataFrame(current_filtered_data)
+        if format_type == "xlsx":
+            export_data(df_export, "xlsx", "Detaylar")
+        elif format_type == "pdf":
+            export_data(df_export, "pdf", "Detaylar")
+    
+    def update_detaylar_filters():
+        """Analiz sonrası filtreleri güncelle"""
+        if df_global is None or tedarikci_col_global is None:
+            return
+        
+        # Tedarikçi listesini güncelle
+        suppliers = ["Tümü"] + sorted(df_global[tedarikci_col_global].unique().astype(str).tolist())
+        supplier_combo['values'] = suppliers
+        
+        # Kolon listesini güncelle
+        columns = ["Tümü"] + list(df_global.columns)
+        search_col_combo['values'] = columns
+        
+        # Treeview kolonlarını ayarla
+        supplier_treeview_new['columns'] = list(df_global.columns)
+        for col in list(df_global.columns):
+            supplier_treeview_new.heading(col, text=col)
+            supplier_treeview_new.column(col, width=100)
+        
+        # İlk filtrelemeyi uygula
+        apply_detaylar_filters()
+    
+    # Event bindings
+    supplier_combo.bind("<<ComboboxSelected>>", apply_detaylar_filters)
+    entry_search.bind("<KeyRelease>", apply_detaylar_filters)
+    search_col_combo.bind("<<ComboboxSelected>>", apply_detaylar_filters)
+    
+    # Global fonksiyonları güncelle
+    global update_supplier_details_tab
+    def update_supplier_details_tab(df, t_col):
+        root.after(0, update_detaylar_filters)
+
+# Detaylar sekmesini başlat
+init_detaylar_tab()
 
 supplier_listbox = tk.Listbox(frame_karsilastirma, selectmode=tk.MULTIPLE, height=8); supplier_listbox.pack(fill="x")
 ttk.Button(frame_karsilastirma, text="Karşılaştır", command=show_comparison_chart).pack()
 comparison_frame = ttk.Frame(frame_karsilastirma); comparison_frame.pack(expand=True, fill="both")
+
 
 def on_closing():
     """Uygulama kapatılırken kaynakları temizler ve güvenli çıkış sağlar."""
