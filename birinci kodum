@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from ttkthemes import ThemedTk
+import customtkinter as ctk
 import pandas as pd
 from rapidfuzz import process, fuzz
 import requests
@@ -143,6 +143,14 @@ ticker_label = None # Ticker için
 # Reklamasyon Yönetimi Global Değişkenler
 df_reklamasyon_global = None
 defect_images_rek = []
+
+# Üretim Takibi Global Değişkenler
+production_orders_global = {}
+gantt_canvas_global = None
+
+# Hammadde Fiyat İstihbaratı Global Değişkenler
+commodity_prices_global = {}
+commodity_history_global = {}
 
 # Frame Yönetimi Global Değişkenler
 frames = {} 
@@ -589,9 +597,31 @@ def update_market_ticker():
         eur_icon = "🔼" if eur >= eur_p else "🔽"
         brent_icon = "🔼" if brent >= brent_p else "🔽"
         
-        ticker_text = f"  💵 USD/TL: {usd:.4f} {usd_icon}   |   💶 EUR/TL: {eur:.4f} {eur_icon}   |   🛢️ BRENT PETROL: ${brent:.2f} {brent_icon}   |   🏭 PAMUK (Endeks): $94.20 ➖   |   🚢 BALTIC DRY (Navlun): 1,450 🔼  "
+        # Hammadde fiyatlarını ekle (commodity_prices_global'den)
+        cotton_price = "94.20"
+        polyester_price = "1,350"
+        viscose_price = "2,100"
+        cotton_icon = "➖"
+        polyester_icon = "➖"
+        viscose_icon = "➖"
+        
+        if commodity_prices_global:
+            if 'Pamuk (Cotlook A Index)' in commodity_prices_global:
+                cotton_data = commodity_prices_global['Pamuk (Cotlook A Index)']
+                cotton_price = f"{cotton_data['current']:.2f}"
+                cotton_icon = "🔼" if cotton_data['change'] >= 0 else "🔽"
+            if 'Polyester' in commodity_prices_global:
+                poly_data = commodity_prices_global['Polyester']
+                polyester_price = f"{poly_data['current']:,.0f}"
+                polyester_icon = "🔼" if poly_data['change'] >= 0 else "🔽"
+            if 'Viskon' in commodity_prices_global:
+                vis_data = commodity_prices_global['Viskon']
+                viscose_price = f"{vis_data['current']:,.0f}"
+                viscose_icon = "🔼" if vis_data['change'] >= 0 else "🔽"
+        
+        ticker_text = f"  💵 USD/TL: {usd:.4f} {usd_icon}   |   💶 EUR/TL: {eur:.4f} {eur_icon}   |   🛢️ BRENT: ${brent:.2f} {brent_icon}   |   🏭 PAMUK: ${cotton_price} {cotton_icon}   |   🧵 POLYESTER: ${polyester_price}/ton {polyester_icon}   |   🎀 VİSKON: ${viscose_price}/ton {viscose_icon}   |   🚢 BALTIC DRY: 1,450 🔼  "
         if ticker_label:
-            ticker_label.config(text=ticker_text)
+            ticker_label.configure(text=ticker_text)
     
     threading.Thread(target=_fetch, daemon=True).start()
     
@@ -604,7 +634,7 @@ def scroll_ticker_animation():
     text = ticker_label.cget("text")
     # İlk karakteri sona al
     new_text = text[1:] + text[0]
-    ticker_label.config(text=new_text)
+    ticker_label.configure(text=new_text)
     # Hız ayarı (ms)
     root.after(200, scroll_ticker_animation)
 
@@ -740,7 +770,7 @@ def fetch_and_display_news(parent_frame):
     # --- ARAYÜZ GÜNCELLEME (Hata) ---
     def _update_ui_error(error_message):
         """Hata mesajını ekranda göster"""
-        loading.config(
+        loading.configure(
             text=f"❌ {error_message}\n\n💡 İpucu: VPN kullanmayı deneyin veya biraz bekleyip tekrar deneyin.",
             fg="red",
             font=("Segoe UI", 10),
@@ -826,7 +856,7 @@ def init_trend_hunter_tab():
         if not keywords: return
 
         # Yükleniyor durumunu göster
-        status_lbl.config(text="Google Trends verileri çekiliyor... (Arka planda, UI donmaz)")
+        status_lbl.configure(text="Google Trends verileri çekiliyor... (Arka planda, UI donmaz)")
         left_panel.update()
         
         # --- ARKA PLAN İŞÇİSİ (Thread) ---
@@ -877,13 +907,13 @@ def init_trend_hunter_tab():
                     current_score = last_row.max()
                     
                     analyze_trend_with_ai(top_trend, current_score, is_simulation=False)
-                    status_lbl.config(text="✅ Veri başarıyla çekildi.")
+                    status_lbl.configure(text="✅ Veri başarıyla çekildi.")
                 else:
                     messagebox.showinfo("Bilgi", "Bu kelimeler için yeterli veri bulunamadı.")
-                    status_lbl.config(text="Veri bulunamadı.")
+                    status_lbl.configure(text="Veri bulunamadı.")
             except Exception as parse_error:
                 messagebox.showerror("Hata", f"Veri işleme hatası: {str(parse_error)}")
-                status_lbl.config(text="Veri işleme hatası.")
+                status_lbl.configure(text="Veri işleme hatası.")
         
         # --- ARAYÜZ GÜNCELLEME (Hata) ---
         def _update_ui_error(error_msg):
@@ -897,10 +927,10 @@ def init_trend_hunter_tab():
                     "🔹 Çözüm 3: Simülasyon modunu kullanın (demo butonu)\n\n"
                     "Not: Bu bir Google API limiti, kodla ilgili değil."
                 )
-                status_lbl.config(text="⏳ Google Rate Limit - Lütfen 1-2 saat bekleyin")
+                status_lbl.configure(text="⏳ Google Rate Limit - Lütfen 1-2 saat bekleyin")
             else:
                 messagebox.showerror("Hata", f"Google Trends bağlantı hatası:\n{error_msg}\n\nİpucu: Simülasyon butonunu deneyebilirsiniz.")
-                status_lbl.config(text="❌ Hata oluştu.")
+                status_lbl.configure(text="❌ Hata oluştu.")
             
             # Loglama
             if activity_logger:
@@ -936,7 +966,7 @@ def init_trend_hunter_tab():
     ai_text = tk.Text(ai_frame, wrap="word", font=("Segoe UI", 10), bg="#fdfefe", height=10, bd=0)
     ai_text.pack(fill="both", expand=True)
     ai_text.insert("1.0", "Veri bekleniyor... Simülasyon veya gerçek veri butonuna basın.")
-    ai_text.config(state="disabled")
+    ai_text.configure(state="disabled")
 
     # --- Yardımcı Fonksiyon: Grafik Çizme ---
     def update_trend_chart(dates, data_dict):
@@ -971,10 +1001,10 @@ def init_trend_hunter_tab():
 
     # --- Yardımcı Fonksiyon: AI Analizi ---
     def analyze_trend_with_ai(trend_name, score, is_simulation=False):
-        ai_text.config(state="normal")
+        ai_text.configure(state="normal")
         ai_text.delete("1.0", tk.END)
         ai_text.insert("1.0", "🧠 Trend verisi analiz ediliyor... (Gemini)\n")
-        ai_text.config(state="disabled")
+        ai_text.configure(state="disabled")
         
         def _thread():
             if not GEMINI_API_KEY:
@@ -1017,10 +1047,464 @@ Yanıtını Türkçe, profesyonel ve kısa tut.
         threading.Thread(target=_thread, daemon=True).start()
 
     def update_ai_text(text):
-        ai_text.config(state="normal")
+        ai_text.configure(state="normal")
         ai_text.delete("1.0", tk.END)
         ai_text.insert("1.0", text)
-        ai_text.config(state="disabled")
+        ai_text.configure(state="disabled")
+
+# ---------- SİPARİŞ AŞAMA TAKİBİ - GANT PLANI (PRODUCTION PIPELINE) ----------
+
+def init_production_pipeline_tab():
+    """Sipariş Aşama Takibi - Gantt Planı sekmesini oluşturur"""
+    global frame_production_pipeline
+    
+    for widget in frame_production_pipeline.winfo_children(): widget.destroy()
+    
+    # Başlık
+    header = tk.Frame(frame_production_pipeline, bg="#34495e", padx=20, pady=20)
+    header.pack(fill="x")
+    tk.Label(header, text="📊 Sipariş Aşama Takibi - GANT Planı", font=("Segoe UI", 18, "bold"), fg="white", bg="#34495e").pack(side="left")
+    tk.Label(header, text="Tekstil Üretim Hattı Görselleştirme Sistemi", font=("Segoe UI", 10), fg="#ecf0f1", bg="#34495e").pack(side="left", padx=10)
+    
+    # Ana içerik paneli
+    content = tk.PanedWindow(frame_production_pipeline, orient=tk.HORIZONTAL)
+    content.pack(fill="both", expand=True, pady=10)
+    
+    # Sol Panel: Sipariş Kontrolü
+    left_panel = tk.Frame(content, bg="white", padx=15, pady=15)
+    content.add(left_panel, width=350)
+    
+    tk.Label(left_panel, text="🎯 Sipariş Yönetimi", font=("Segoe UI", 12, "bold"), fg="#2c3e50", bg="white").pack(anchor="w", pady=(0,10))
+    
+    # Sipariş Ekleme
+    add_frame = tk.LabelFrame(left_panel, text="Yeni Sipariş Ekle", bg="#f8f9fa", fg="#34495e", font=("Segoe UI", 9, "bold"), padx=10, pady=10)
+    add_frame.pack(fill="x", pady=10)
+    
+    tk.Label(add_frame, text="Sipariş No:", bg="#f8f9fa").grid(row=0, column=0, sticky="w", pady=5)
+    order_no_entry = ttk.Entry(add_frame, width=20)
+    order_no_entry.grid(row=0, column=1, pady=5, padx=5)
+    
+    tk.Label(add_frame, text="Sipariş Adı:", bg="#f8f9fa").grid(row=1, column=0, sticky="w", pady=5)
+    order_name_entry = ttk.Entry(add_frame, width=20)
+    order_name_entry.grid(row=1, column=1, pady=5, padx=5)
+    
+    # Aşama Durumu Güncelleme
+    update_frame = tk.LabelFrame(left_panel, text="Aşama Durumu Güncelle", bg="#e8f5e9", fg="#27ae60", font=("Segoe UI", 9, "bold"), padx=10, pady=10)
+    update_frame.pack(fill="x", pady=10)
+    
+    tk.Label(update_frame, text="Sipariş Seç:", bg="#e8f5e9").grid(row=0, column=0, sticky="w", pady=5)
+    order_select_combo = ttk.Combobox(update_frame, width=18, state="readonly")
+    order_select_combo.grid(row=0, column=1, pady=5, padx=5)
+    
+    tk.Label(update_frame, text="Aşama:", bg="#e8f5e9").grid(row=1, column=0, sticky="w", pady=5)
+    stage_combo = ttk.Combobox(update_frame, width=18, state="readonly")
+    stage_combo['values'] = ["İplik → Kumaş", "Boyama", "Paketleme", "Sevkiyat"]
+    stage_combo.grid(row=1, column=1, pady=5, padx=5)
+    
+    tk.Label(update_frame, text="Durum (%):", bg="#e8f5e9").grid(row=2, column=0, sticky="w", pady=5)
+    progress_scale = ttk.Scale(update_frame, from_=0, to=100, orient="horizontal")
+    progress_scale.grid(row=2, column=1, pady=5, padx=5)
+    progress_label = tk.Label(update_frame, text="0%", bg="#e8f5e9", font=("Segoe UI", 9, "bold"))
+    progress_label.grid(row=2, column=2, pady=5)
+    
+    def update_progress_label(val):
+        progress_label.configure(text=f"{int(float(val))}%")
+    
+    progress_scale.configure(command=update_progress_label)
+    
+    # Sağ Panel: GANT Chart
+    right_panel = tk.Frame(content, bg="white", padx=20, pady=10)
+    content.add(right_panel)
+    
+    chart_frame = tk.Frame(right_panel, bg="white")
+    chart_frame.pack(fill="both", expand=True)
+    
+    # Fonksiyonlar
+    def add_order():
+        order_no = order_no_entry.get().strip()
+        order_name = order_name_entry.get().strip()
+        
+        if not order_no or not order_name:
+            messagebox.showwarning("Eksik Bilgi", "Lütfen sipariş no ve adı girin.")
+            return
+        
+        if order_no in production_orders_global:
+            messagebox.showwarning("Uyarı", "Bu sipariş numarası zaten mevcut.")
+            return
+        
+        # Yeni sipariş ekle (başlangıçta tüm aşamalar %0)
+        production_orders_global[order_no] = {
+            'name': order_name,
+            'stages': {
+                'İplik → Kumaş': 0,
+                'Boyama': 0,
+                'Paketleme': 0,
+                'Sevkiyat': 0
+            },
+            'start_date': datetime.datetime.now()
+        }
+        
+        order_no_entry.delete(0, tk.END)
+        order_name_entry.delete(0, tk.END)
+        
+        update_order_list()
+        draw_gantt_chart()
+        
+        if activity_logger:
+            activity_logger.log_event("ORDER_ADDED", f"Sipariş eklendi: {order_no} - {order_name}", "Üretim Takibi")
+    
+    def update_stage():
+        order_no = order_select_combo.get()
+        stage = stage_combo.get()
+        progress = int(progress_scale.get())
+        
+        if not order_no or not stage:
+            messagebox.showwarning("Eksik Bilgi", "Lütfen sipariş ve aşama seçin.")
+            return
+        
+        if order_no in production_orders_global:
+            production_orders_global[order_no]['stages'][stage] = progress
+            draw_gantt_chart()
+            messagebox.showinfo("Başarılı", f"{order_no} - {stage}: %{progress} güncellendi.")
+            
+            if activity_logger:
+                activity_logger.log_event("STAGE_UPDATED", f"{order_no} - {stage}: {progress}%", "Üretim Takibi")
+        else:
+            messagebox.showerror("Hata", "Sipariş bulunamadı.")
+    
+    def update_order_list():
+        order_list = list(production_orders_global.keys())
+        order_select_combo['values'] = order_list
+        if order_list:
+            order_select_combo.set(order_list[0])
+    
+    def draw_gantt_chart():
+        """GANT grafiğini matplotlib ile çizer"""
+        for widget in chart_frame.winfo_children():
+            widget.destroy()
+        
+        if not production_orders_global:
+            tk.Label(chart_frame, text="Henüz sipariş eklenmedi.\nSol panelden sipariş ekleyin.", 
+                    font=("Segoe UI", 12), fg="gray", bg="white").pack(expand=True)
+            return
+        
+        fig = plt.figure(figsize=(10, 6), dpi=100)
+        ax = fig.add_subplot(111)
+        
+        stages = ['İplik → Kumaş', 'Boyama', 'Paketleme', 'Sevkiyat']
+        colors = ['#3498db', '#9b59b6', '#e74c3c', '#2ecc71']
+        
+        y_pos = 0
+        y_labels = []
+        
+        for order_no, order_data in production_orders_global.items():
+            order_name = order_data['name']
+            y_labels.append(f"{order_no}\n{order_name}")
+            
+            x_start = 0
+            for idx, stage in enumerate(stages):
+                progress = order_data['stages'][stage]
+                width = progress / 100.0  # Her aşama maksimum 1 birim
+                
+                if width > 0:
+                    ax.barh(y_pos, width, left=x_start, height=0.6, 
+                           color=colors[idx], alpha=0.8, 
+                           edgecolor='black', linewidth=0.5)
+                    
+                    # İlerleme yüzdesini göster
+                    if width > 0.15:  # Sadece yeterince geniş çubuklar için
+                        ax.text(x_start + width/2, y_pos, f'{int(progress)}%', 
+                               ha='center', va='center', fontsize=8, fontweight='bold', color='white')
+                
+                x_start += 1  # Her aşama 1 birim genişliğinde
+            
+            y_pos += 1
+        
+        ax.set_yticks(range(len(y_labels)))
+        ax.set_yticklabels(y_labels, fontsize=9)
+        ax.set_xticks(range(len(stages) + 1))
+        ax.set_xticklabels([''] + stages, rotation=15, ha='right', fontsize=9)
+        ax.set_xlabel('Üretim Aşamaları', fontsize=10, fontweight='bold')
+        ax.set_ylabel('Siparişler', fontsize=10, fontweight='bold')
+        ax.set_title('Tekstil Üretim Hattı - Gantt Planı', fontsize=12, fontweight='bold')
+        ax.set_xlim(0, len(stages))
+        ax.grid(axis='x', alpha=0.3, linestyle='--')
+        
+        # Lejant ekle
+        from matplotlib.patches import Patch
+        legend_elements = [Patch(facecolor=colors[i], label=stages[i]) for i in range(len(stages))]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
+        
+        plt.tight_layout()
+        
+        canvas = FigureCanvasTkAgg(fig, master=chart_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        
+        # Toolbar ekle
+        toolbar_frame = tk.Frame(chart_frame)
+        toolbar_frame.pack(fill="x")
+        toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
+        toolbar.update()
+    
+    # Butonlar
+    ttk.Button(add_frame, text="➕ Sipariş Ekle", command=add_order).grid(row=2, column=0, columnspan=2, pady=10)
+    ttk.Button(update_frame, text="🔄 Durumu Güncelle", command=update_stage).grid(row=3, column=0, columnspan=3, pady=10)
+    
+    # Örnek veriler ekle (ilk açılışta)
+    if not production_orders_global:
+        production_orders_global['ORD-001'] = {
+            'name': 'Pamuklu Gömlek',
+            'stages': {'İplik → Kumaş': 100, 'Boyama': 75, 'Paketleme': 30, 'Sevkiyat': 0},
+            'start_date': datetime.datetime.now() - timedelta(days=5)
+        }
+        production_orders_global['ORD-002'] = {
+            'name': 'Denim Pantolon',
+            'stages': {'İplik → Kumaş': 100, 'Boyama': 100, 'Paketleme': 80, 'Sevkiyat': 20},
+            'start_date': datetime.datetime.now() - timedelta(days=7)
+        }
+        production_orders_global['ORD-003'] = {
+            'name': 'Polyester Ceket',
+            'stages': {'İplik → Kumaş': 60, 'Boyama': 0, 'Paketleme': 0, 'Sevkiyat': 0},
+            'start_date': datetime.datetime.now() - timedelta(days=2)
+        }
+    
+    update_order_list()
+    draw_gantt_chart()
+
+# ---------- HAMMADDE FİYAT İSTİHBARATI (COMMODITY INTELLIGENCE) ----------
+# Price simulation constants
+PRICE_VARIANCE_FACTOR = 0.15  # ±15% price fluctuation
+TREND_START_FACTOR = 0.90     # Trend starts at 90% of current price
+PRICE_BLEND_RATIO = 0.7       # 70% random, 30% trend
+TREND_BLEND_RATIO = 0.3       # Complement of PRICE_BLEND_RATIO
+
+def init_commodity_intelligence_tab():
+    """Hammadde Fiyat İstihbaratı sekmesini oluşturur"""
+    global frame_commodity_intel
+    
+    for widget in frame_commodity_intel.winfo_children(): widget.destroy()
+    
+    # Başlık
+    header = tk.Frame(frame_commodity_intel, bg="#16a085", padx=20, pady=20)
+    header.pack(fill="x")
+    tk.Label(header, text="💹 Hammadde Fiyat İstihbaratı", font=("Segoe UI", 18, "bold"), fg="white", bg="#16a085").pack(side="left")
+    tk.Label(header, text="Gerçek Zamanlı Emtia Fiyat Takibi ve Analiz Sistemi", font=("Segoe UI", 10), fg="#d5f4e6", bg="#16a085").pack(side="left", padx=10)
+    
+    # Ana içerik
+    content = tk.PanedWindow(frame_commodity_intel, orient=tk.VERTICAL)
+    content.pack(fill="both", expand=True, pady=10)
+    
+    # Üst Panel: Fiyat Kartları
+    top_panel = tk.Frame(content, bg="#ecf0f1", padx=20, pady=15)
+    content.add(top_panel, height=200)
+    
+    tk.Label(top_panel, text="📊 Güncel Emtia Fiyatları", font=("Segoe UI", 12, "bold"), fg="#2c3e50", bg="#ecf0f1").pack(anchor="w", pady=(0,10))
+    
+    cards_frame = tk.Frame(top_panel, bg="#ecf0f1")
+    cards_frame.pack(fill="x")
+    
+    # Alt Panel: Grafik ve Kontroller
+    bottom_panel = tk.Frame(content, bg="white")
+    content.add(bottom_panel)
+    
+    # Kontrol paneli
+    control_frame = tk.Frame(bottom_panel, bg="#f8f9fa", padx=15, pady=15)
+    control_frame.pack(fill="x")
+    
+    tk.Label(control_frame, text="Emtia Seç:", bg="#f8f9fa", font=("Segoe UI", 9, "bold")).pack(side="left", padx=5)
+    commodity_combo = ttk.Combobox(control_frame, width=20, state="readonly")
+    commodity_combo['values'] = ["Pamuk (Cotlook A Index)", "Polyester", "Viskon"]
+    commodity_combo.set("Pamuk (Cotlook A Index)")
+    commodity_combo.pack(side="left", padx=5)
+    
+    tk.Label(control_frame, text="Zaman Aralığı:", bg="#f8f9fa", font=("Segoe UI", 9, "bold")).pack(side="left", padx=15)
+    period_combo = ttk.Combobox(control_frame, width=12, state="readonly")
+    period_combo['values'] = ["30 Gün", "90 Gün", "365 Gün"]
+    period_combo.set("30 Gün")
+    period_combo.pack(side="left", padx=5)
+    
+    # Grafik alanı
+    chart_frame = tk.Frame(bottom_panel, bg="white")
+    chart_frame.pack(fill="both", expand=True, padx=20, pady=10)
+    
+    # Alert alanı
+    alert_frame = tk.LabelFrame(bottom_panel, text="⚠️ Fiyat Uyarıları", bg="#fff3cd", fg="#856404", font=("Segoe UI", 10, "bold"), padx=15, pady=10)
+    alert_frame.pack(fill="x", padx=20, pady=10)
+    
+    alert_text = tk.Text(alert_frame, height=4, wrap="word", font=("Segoe UI", 9), bg="#fffaeb", fg="#856404", bd=0)
+    alert_text.pack(fill="x")
+    alert_text.insert("1.0", "Fiyat uyarıları burada görünecek...")
+    alert_text.configure(state="disabled")
+    
+    # Fonksiyonlar
+    def fetch_mock_commodity_data():
+        """Mock emtia fiyat verisi oluşturur (Gerçek API yerine)"""
+        # Güncel fiyatlar (mock data)
+        commodity_prices_global.clear()
+        commodity_prices_global['Pamuk (Cotlook A Index)'] = {
+            'current': 94.20,
+            'previous': 92.50,
+            'unit': 'USD/lb',
+            'change': 1.7
+        }
+        commodity_prices_global['Polyester'] = {
+            'current': 1350,
+            'previous': 1420,
+            'unit': 'USD/ton',
+            'change': -70
+        }
+        commodity_prices_global['Viskon'] = {
+            'current': 2100,
+            'previous': 2050,
+            'unit': 'USD/ton',
+            'change': 50
+        }
+        
+        # Geçmiş fiyat verisi oluştur
+        commodity_history_global.clear()
+        for commodity in commodity_prices_global.keys():
+            base_price = commodity_prices_global[commodity]['current']
+            history = {}
+            
+            for days in [30, 90, 365]:
+                dates = [(datetime.datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days, -1, -1)]
+                # Rastgele fiyat dalgalanması oluştur
+                prices = [base_price + random.uniform(-base_price*PRICE_VARIANCE_FACTOR, base_price*PRICE_VARIANCE_FACTOR) for _ in dates]
+                # Trend ekle
+                trend = np.linspace(base_price * TREND_START_FACTOR, base_price, len(prices))
+                prices = [p * PRICE_BLEND_RATIO + t * TREND_BLEND_RATIO for p, t in zip(prices, trend)]
+                history[days] = {'dates': dates, 'prices': prices}
+            
+            commodity_history_global[commodity] = history
+    
+    def update_price_cards():
+        """Fiyat kartlarını günceller"""
+        for widget in cards_frame.winfo_children():
+            widget.destroy()
+        
+        col = 0
+        for commodity, data in commodity_prices_global.items():
+            card = tk.Frame(cards_frame, bg="white", bd=1, relief="solid", padx=15, pady=15)
+            card.grid(row=0, column=col, padx=10, sticky="ew")
+            cards_frame.grid_columnconfigure(col, weight=1)
+            
+            # İsim
+            tk.Label(card, text=commodity, font=("Segoe UI", 10, "bold"), fg="#34495e", bg="white").pack(anchor="w")
+            
+            # Fiyat
+            price_frame = tk.Frame(card, bg="white")
+            price_frame.pack(fill="x", pady=5)
+            tk.Label(price_frame, text=f"{data['current']:.2f}", font=("Segoe UI", 18, "bold"), fg="#2c3e50", bg="white").pack(side="left")
+            tk.Label(price_frame, text=f" {data['unit']}", font=("Segoe UI", 10), fg="#7f8c8d", bg="white").pack(side="left")
+            
+            # Değişim
+            change = data['change']
+            change_color = "#27ae60" if change >= 0 else "#e74c3c"
+            change_icon = "▲" if change >= 0 else "▼"
+            change_text = f"{change_icon} {abs(change):.2f}"
+            if abs(change) >= 1:
+                change_pct = (change / data['previous']) * 100
+                change_text += f" ({change_pct:+.1f}%)"
+            
+            tk.Label(card, text=change_text, font=("Segoe UI", 9, "bold"), fg=change_color, bg="white").pack(anchor="w")
+            
+            col += 1
+    
+    def update_chart():
+        """Seçilen emtia için fiyat grafiğini çizer"""
+        for widget in chart_frame.winfo_children():
+            widget.destroy()
+        
+        commodity = commodity_combo.get()
+        period_text = period_combo.get()
+        period = int(period_text.split()[0])
+        
+        if commodity not in commodity_history_global:
+            tk.Label(chart_frame, text="Veri yükleniyor...", font=("Segoe UI", 12), fg="gray", bg="white").pack(expand=True)
+            return
+        
+        history = commodity_history_global[commodity][period]
+        dates = history['dates']
+        prices = history['prices']
+        
+        fig = plt.figure(figsize=(10, 4), dpi=100)
+        ax = fig.add_subplot(111)
+        
+        # Fiyat çizgisi
+        ax.plot(dates, prices, linewidth=2, color='#3498db', marker='o', markersize=3, label='Fiyat')
+        
+        # Hareketli ortalama ekle
+        if len(prices) > 7:
+            ma = pd.Series(prices).rolling(window=7).mean()
+            ax.plot(dates, ma, linewidth=2, color='#e74c3c', linestyle='--', label='7 Günlük Ortalama')
+        
+        # Güncel fiyat çizgisi
+        current_price = commodity_prices_global[commodity]['current']
+        ax.axhline(y=current_price, color='#27ae60', linestyle=':', linewidth=1.5, label=f'Güncel: {current_price:.2f}')
+        
+        ax.set_title(f'{commodity} - Son {period} Gün Fiyat Geçmişi', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Tarih', fontsize=10)
+        ax.set_ylabel(f'Fiyat ({commodity_prices_global[commodity]["unit"]})', fontsize=10)
+        ax.legend(loc='best', fontsize=9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        
+        # X ekseni etiketlerini döndür
+        every_nth = max(1, len(dates) // 10)
+        ax.set_xticks(range(0, len(dates), every_nth))
+        ax.set_xticklabels([dates[i] for i in range(0, len(dates), every_nth)], rotation=45, ha='right', fontsize=8)
+        
+        plt.tight_layout()
+        
+        canvas = FigureCanvasTkAgg(fig, master=chart_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+    
+    def update_alerts():
+        """Fiyat uyarılarını günceller"""
+        alert_text.configure(state="normal")
+        alert_text.delete("1.0", tk.END)
+        
+        alerts = []
+        for commodity, data in commodity_prices_global.items():
+            current = data['current']
+            previous = data['previous']
+            
+            if current > 0 and previous > 0:
+                pct_change = ((current - previous) / previous) * 100
+                
+                if abs(pct_change) >= 5:
+                    icon = "🔴" if pct_change > 0 else "🟢"
+                    direction = "yüksek" if pct_change > 0 else "düşük"
+                    alerts.append(f"{icon} {commodity}: Bu fiyat %{abs(pct_change):.1f} {direction}! (Referans: {previous:.2f})")
+        
+        if alerts:
+            alert_text.insert("1.0", "\n".join(alerts))
+        else:
+            alert_text.insert("1.0", "✅ Tüm emtia fiyatları normal aralıkta.")
+        
+        alert_text.configure(state="disabled")
+    
+    def refresh_data():
+        """Tüm verileri yeniler"""
+        fetch_mock_commodity_data()
+        update_price_cards()
+        update_chart()
+        update_alerts()
+        
+        if activity_logger:
+            activity_logger.log_event("COMMODITY_DATA_REFRESH", "Emtia fiyatları güncellendi", "Hammadde İstihbaratı")
+    
+    # Yenile butonu
+    ttk.Button(control_frame, text="🔄 Verileri Yenile", command=refresh_data).pack(side="left", padx=15)
+    ttk.Button(control_frame, text="📊 Grafiği Güncelle", command=update_chart).pack(side="left", padx=5)
+    
+    # Combobox değişikliklerinde grafiği güncelle
+    commodity_combo.bind("<<ComboboxSelected>>", lambda e: update_chart())
+    period_combo.bind("<<ComboboxSelected>>", lambda e: update_chart())
+    
+    # İlk veri yüklemesi
+    refresh_data()
 
 # ---------- REKLAMASYON YÖNETİMİ FONKSİYONLARI ----------
 # Yardımcı Fonksiyonlar
@@ -1452,10 +1936,10 @@ def init_rek_detailed_report_tab():
             
             draft_text = tk.Text(text_frame, wrap="word", font=("Segoe UI", 10), yscrollcommand=text_scroll.set, height=15)
             draft_text.pack(side="left", fill="both", expand=True)
-            text_scroll.config(command=draft_text.yview)
+            text_scroll.configure(command=draft_text.yview)
             
             draft_text.insert("1.0", "AI taslak oluşturuluyor, lütfen bekleyin...")
-            draft_text.config(state="disabled")
+            draft_text.configure(state="disabled")
             
             # Butonlar
             btn_frame = tk.Frame(content, bg="#ecf0f1")
@@ -1628,17 +2112,17 @@ Saygılarımızla,
 [İmza]"""
                     
                     # Text alanını güncelle
-                    draft_text.config(state="normal")
+                    draft_text.configure(state="normal")
                     draft_text.delete("1.0", "end")
                     draft_text.insert("1.0", ai_draft)
-                    draft_text.config(state="normal")  # Düzenlenebilir bırak
+                    draft_text.configure(state="normal")  # Düzenlenebilir bırak
                     
                     # LOG
                     if activity_logger:
                         activity_logger.log_event("AI_DRAFT_GENERATED", f"{len(selected_data)} kayıt için mail taslağı oluşturuldu", "Rek Detaylı Rapor")
                     
                 except Exception as e:
-                    draft_text.config(state="normal")
+                    draft_text.configure(state="normal")
                     draft_text.delete("1.0", "end")
                     draft_text.insert("1.0", f"Hata oluştu: {str(e)}\n\nLütfen tekrar deneyin veya manuel olarak mail oluşturun.")
                     if activity_logger:
@@ -1773,7 +2257,7 @@ def init_rek_mail_tab():
             return
 
         try:
-            status_lbl.config(text="Reklamasyon raporları hazırlanıyor...", fg="blue")
+            status_lbl.configure(text="Reklamasyon raporları hazırlanıyor...", fg="blue")
             root.update()
 
             # 1. Grafiği Oluştur ve Kaydet
@@ -1863,11 +2347,11 @@ def init_rek_mail_tab():
             if os.path.exists(chart_path): os.remove(chart_path)
             if excel_path and os.path.exists(excel_path): os.remove(excel_path)
 
-            status_lbl.config(text="✅ Mail başarıyla gönderildi!", fg="green")
+            status_lbl.configure(text="✅ Mail başarıyla gönderildi!", fg="green")
             messagebox.showinfo("Başarılı", "Reklamasyon raporu maili gönderildi.")
 
         except Exception as e:
-            status_lbl.config(text="Hata oluştu.", fg="red")
+            status_lbl.configure(text="Hata oluştu.", fg="red")
             messagebox.showerror("Gönderim Hatası", f"Mail gönderilemedi:\n{str(e)}")
 
     btn_send = tk.Button(content, text="🚀 Raporu Gönder", bg="#2980b9", fg="white", font=("Segoe UI", 12, "bold"), padx=20, pady=10, command=send_rek_email)
@@ -2160,11 +2644,11 @@ def init_ocr_tab():
         if file_path:
             # Preview logic
             if file_path.lower().endswith('.pdf'):
-                 ocr_image_label.config(image='', text=f"PDF Dosyası Seçildi:\n{os.path.basename(file_path)}")
+                 ocr_image_label.configure(image='', text=f"PDF Dosyası Seçildi:\n{os.path.basename(file_path)}")
                  ocr_image_label.image = None
             else:
                  img = Image.open(file_path); img.thumbnail((350, 500)); img_tk = ImageTk.PhotoImage(img)
-                 ocr_image_label.config(image=img_tk, text=""); ocr_image_label.image = img_tk
+                 ocr_image_label.configure(image=img_tk, text=""); ocr_image_label.image = img_tk
             
             run_ocr_pipeline(file_path)
     
@@ -2211,10 +2695,10 @@ def init_ocr_tab():
 def run_ocr_pipeline(image_path):
     """Geliştirilmiş OCR pipeline: JSON çıktı ve otomatik sipariş eşleştirme"""
     global ocr_json_data
-    ocr_result_text.config(state="normal")
+    ocr_result_text.configure(state="normal")
     ocr_result_text.delete("1.0", tk.END)
     ocr_result_text.insert("1.0", "Fatura işleniyor ve anlamsal veri çıkarılıyor... Lütfen bekleyin...\n")
-    ocr_result_text.config(state="disabled")
+    ocr_result_text.configure(state="disabled")
     
     def _thread():
         global ocr_json_data
@@ -2229,7 +2713,7 @@ def run_ocr_pipeline(image_path):
             root.after(0, lambda: _update_text(error, success=False, data=None))
             
     def _update_text(val, success, data):
-        ocr_result_text.config(state="normal")
+        ocr_result_text.configure(state="normal")
         ocr_result_text.delete("1.0", tk.END)
         if success:
             ocr_result_text.insert("1.0", "✅ FATURA BAŞARIYLA ÇÖZÜMLENDİ!\n\n")
@@ -2244,7 +2728,7 @@ def run_ocr_pipeline(image_path):
                     ocr_order_combobox.set("")
         else:
             ocr_result_text.insert("1.0", f"❌ HATA: {val}")
-        ocr_result_text.config(state="disabled")
+        ocr_result_text.configure(state="disabled")
 
     threading.Thread(target=_thread, daemon=True).start()
 
@@ -2407,7 +2891,7 @@ Toplam: {len(suppliers)} tedarikçi
 ⛔ Kırmızı: Yüksek Risk (< 60)
 
 Marker'a tıklayarak detayları görün."""
-        route_info_label.config(text=info_text)
+        route_info_label.configure(text=info_text)
     
     messagebox.showinfo("Risk Haritası", f"{len(suppliers)} tedarikçi risk durumlarına göre haritada işaretlendi!")
 
@@ -2541,7 +3025,7 @@ def set_destination_marker(coords):
             
     else:
         if route_info_label:
-            route_info_label.config(text=f"📍 VARIŞ: {weather_info}\nLütfen bir başlangıç noktası seçin veya dosya yükleyin.")
+            route_info_label.configure(text=f"📍 VARIŞ: {weather_info}\nLütfen bir başlangıç noktası seçin veya dosya yükleyin.")
         return
 
     if start_pos:
@@ -2571,14 +3055,14 @@ def set_destination_marker(coords):
     initial_text += f"🤖 Yapay Zeka Lojistik Analizi Hazırlanıyor..."
     
     if route_info_label:
-        route_info_label.config(text=initial_text)
+        route_info_label.configure(text=initial_text)
     
     def fetch_ai_logistics():
         dest_coord_str = f"{coords[0]:.4f}, {coords[1]:.4f}"
         ai_insight = get_ai_logistics_analysis(origin_name, dest_coord_str, min_dist, weather_info)
         final_text = initial_text.replace("🤖 Yapay Zeka Lojistik Analizi Hazırlanıyor...", f"\n🧠 AI Lojistik Analizi:\n{ai_insight}")
         if route_info_label:
-            route_info_label.config(text=final_text)
+            route_info_label.configure(text=final_text)
     
     threading.Thread(target=fetch_ai_logistics, daemon=True).start()
 
@@ -2964,7 +3448,7 @@ def show_scorecard():
     
     def fetch_comment():
         comment = get_scorecard_ai_comment(row, grade, description)
-        ai_lbl.config(text=comment)
+        ai_lbl.configure(text=comment)
     threading.Thread(target=fetch_comment, daemon=True).start()
 
 def export_scorecard_pdf():
@@ -3065,7 +3549,7 @@ def update_trend_tab(df, date_col, fiyat_col, miktar_col):
     
     def fetch_comment():
         comment = get_trend_ai_comment(monthly_data.tail(12).to_string(index=False))
-        if loading_lbl.winfo_exists(): loading_lbl.config(text=comment, font=("Arial", 10), fg="#2c3e50", justify="left", wraplength=900)
+        if loading_lbl.winfo_exists(): loading_lbl.configure(text=comment, font=("Arial", 10), fg="#2c3e50", justify="left", wraplength=900)
     threading.Thread(target=fetch_comment, daemon=True).start()
 
 # ---------- GELECEK TAHMİNİ (FORECASTING) ----------
@@ -3340,7 +3824,7 @@ def init_smart_order_tab():
     order_ai_text = tk.Text(right_panel, wrap="word", font=("Segoe UI", 10), bg="#f9f9f9", padx=10, pady=10, height=25)
     order_ai_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
     order_ai_text.insert("1.0", "Lütfen bir ürün ve miktar seçip hesaplama başlatın.\n\nYapay Zeka, dağıtım mantığını burada açıklayacaktır.")
-    order_ai_text.config(state="disabled")
+    order_ai_text.configure(state="disabled")
     
     btn_frame = tk.Frame(right_panel, bg="white")
     btn_frame.pack(fill="x", pady=10, padx=10)
@@ -3395,7 +3879,7 @@ def show_currency_simulation():
             usd_change = float(usd_entry.get())
             eur_change = float(eur_entry.get())
             
-            result_text.config(state="normal")
+            result_text.configure(state="normal")
             result_text.delete("1.0", "end")
             
             # Mevcut maliyet hesapla (basitleştirilmiş)
@@ -3574,7 +4058,7 @@ def show_currency_simulation():
                 report += "   • Mevcut stratejiler devam edebilir\n"
             
             result_text.insert("1.0", report)
-            result_text.config(state="disabled")
+            result_text.configure(state="disabled")
             
             # LOG
             if activity_logger:
@@ -3583,7 +4067,7 @@ def show_currency_simulation():
         except ValueError:
             messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin!")
         except Exception as e:
-            result_text.config(state="normal")
+            result_text.configure(state="normal")
             result_text.insert("1.0", f"⚠️ Simülasyon hatası: {str(e)}")
     
     # Butonlar
@@ -3702,10 +4186,10 @@ def run_order_allocation(qty_entry):
 def generate_order_rationale_gemini(product, qty, allocation_data):
     if not GEMINI_API_KEY: return
     
-    root.after(0, lambda: order_ai_text.config(state="normal"))
+    root.after(0, lambda: order_ai_text.configure(state="normal"))
     root.after(0, lambda: order_ai_text.delete("1.0", tk.END))
     root.after(0, lambda: order_ai_text.insert("1.0", "⏳ Yapay Zeka stratejik raporu hazırlıyor...\n"))
-    root.after(0, lambda: order_ai_text.config(state="disabled"))
+    root.after(0, lambda: order_ai_text.configure(state="disabled"))
     
     prompt = f"""
     Sen kıdemli bir Tedarik Zinciri Yöneticisisin. CPO'ya sunulmak üzere bir sipariş dağıtım gerekçesi yaz.
@@ -3738,10 +4222,10 @@ def generate_order_rationale_gemini(product, qty, allocation_data):
         root.after(0, lambda: update_ai_text_widget(f"Bağlantı Hatası: {str(e)}"))
 
 def update_ai_text_widget(text):
-    order_ai_text.config(state="normal")
+    order_ai_text.configure(state="normal")
     order_ai_text.delete("1.0", tk.END)
     order_ai_text.insert("1.0", text)
-    order_ai_text.config(state="disabled")
+    order_ai_text.configure(state="disabled")
 
 def generate_order_drafts():
     if 'current_allocation_data' not in globals() or current_allocation_data is None:
@@ -4016,7 +4500,7 @@ def init_chat_tab():
     chat_history_text = tk.Text(chat_frame, wrap="word", font=("Segoe UI", 11), bg="white", bd=1, relief="solid",
                                 state="disabled", yscrollcommand=scrollbar.set)
     chat_history_text.pack(side="left", fill="both", expand=True)
-    scrollbar.config(command=chat_history_text.yview)
+    scrollbar.configure(command=chat_history_text.yview)
     
     chat_history_text.tag_configure("user", foreground="#2980b9", font=("Segoe UI", 11, "bold"), justify="right")
     chat_history_text.tag_configure("ai", foreground="#2c3e50", font=("Segoe UI", 11), justify="left")
@@ -4036,9 +4520,9 @@ def send_chat_message(entry_widget):
     query = entry_widget.get().strip()
     if not query: return
     
-    chat_history_text.config(state="normal")
+    chat_history_text.configure(state="normal")
     chat_history_text.insert("end", f"\nSiz: {query}\n", "user")
-    chat_history_text.config(state="disabled")
+    chat_history_text.configure(state="disabled")
     entry_widget.delete(0, 'end')
     
     threading.Thread(target=lambda: fetch_chat_response(query), daemon=True).start()
@@ -4081,11 +4565,11 @@ def fetch_chat_response(query):
 
 def append_chat_response(message, tag):
     def _update():
-        chat_history_text.config(state="normal")
+        chat_history_text.configure(state="normal")
         chat_history_text.insert("end", f"\nAsistan: {message}\n", tag)
         chat_history_text.insert("end", "-"*50 + "\n", "ai")
         chat_history_text.see("end")
-        chat_history_text.config(state="disabled")
+        chat_history_text.configure(state="disabled")
     
     if chat_history_text:
         chat_history_text.after(0, _update)
@@ -4213,7 +4697,7 @@ def send_report_email():
         if os.path.exists(p): os.remove(p)
 
 def set_status(message):
-    if status_label: root.after(0, lambda: status_label.config(text=message))
+    if status_label: root.after(0, lambda: status_label.configure(text=message))
 
 def normalize_series(s): return s.astype(str).fillna("").str.strip().str.lower()
 
@@ -4261,7 +4745,7 @@ def _update_ai_comment_tab(message, en_iyi_df):
     txt = tk.Text(text_frame, wrap="word", font=("Segoe UI", 11), bg="white", fg="#333333",
                   bd=0, padx=20, pady=20, yscrollcommand=scrollbar.set)
     txt.pack(side="left", fill="both", expand=True)
-    scrollbar.config(command=txt.yview)
+    scrollbar.configure(command=txt.yview)
     
     txt.tag_configure("header", font=("Segoe UI", 12, "bold"), foreground="#2980b9", spacing3=10, spacing1=5)
     txt.tag_configure("risk", font=("Segoe UI", 11, "bold"), foreground="#e74c3c") 
@@ -4317,7 +4801,7 @@ def _update_ai_comment_tab(message, en_iyi_df):
              if not found_supplier:
                 txt.insert(tk.END, line + "\n", current_tags)
         
-    txt.config(state="disabled")
+    txt.configure(state="disabled")
 
     bf = tk.Frame(frame_ai, bg="#f4f6f9")
     bf.pack(fill="x", pady=10, padx=10)
@@ -4331,7 +4815,7 @@ def _update_ai_comment_tab(message, en_iyi_df):
 
 def yapay_zeka_analizi_gemini(sonuc_df, ham_df, tedarikci_col, fiyat_col, teslim_col, iade_col):
     if not GEMINI_API_KEY: return "API yok."
-    root.after(0, lambda: ai_status_label.config(text="AI Analizi..."))
+    root.after(0, lambda: ai_status_label.configure(text="AI Analizi..."))
     prompt = f"Tedarikçi verileri:\n{sonuc_df.head(20).to_dict(orient='records')}\nLütfen en iyi/kötü tedarikçileri, riskleri ve aksiyonları yorumla."
     try:
         resp = requests.post(f"{GEMINI_API_URL}?key={GEMINI_API_KEY}", headers={"Content-Type": "application/json"}, json={"contents": [{"parts":[{"text": prompt}]}]}, timeout=120)
@@ -4380,7 +4864,7 @@ def analiz_et_with_options(dosyalar, stok_kod):
             activity_logger.log_analysis("TEDARIKCI_ANALIZ", f"Dosyalar: {file_names}, Stok: {stok_kod or 'Tümü'}", "Analiz")
         
         threading.Thread(target=lambda: send_usage_log_email(f"Analiz: {len(dosyalar)} dosya")).start()
-        root.after(0, lambda: ai_status_label.config(text="Okunuyor..."))
+        root.after(0, lambda: ai_status_label.configure(text="Okunuyor..."))
         
         df_list = [pd.read_csv(f, dtype=str) if f.endswith('.csv') else pd.read_excel(f, dtype=str) for f in dosyalar]
         df = pd.concat(df_list, ignore_index=True)
@@ -4434,7 +4918,7 @@ def analiz_et_with_options(dosyalar, stok_kod):
         if exclude_outliers_var.get(): 
             df_analiz = df_analiz[~df_analiz.index.isin(outliers.index)]
         
-        root.after(0, lambda: ai_status_label.config(text="Hesaplanıyor..."))
+        root.after(0, lambda: ai_status_label.configure(text="Hesaplanıyor..."))
         
         agg_dict = {fiyat_col: "mean", teslim_col: "mean", iade_col: "mean"}
         if miktar_col: 
@@ -4565,23 +5049,23 @@ def analiz_et_with_options(dosyalar, stok_kod):
         root.after(0, lambda: update_listbox(sorted(df_analiz[ted_col].unique())))
         
         if karne_combobox:
-             root.after(0, lambda: karne_combobox.config(values=sorted(sonuc_main[ted_col].unique())))
+             root.after(0, lambda: karne_combobox.configure(values=sorted(sonuc_main[ted_col].unique())))
         
         if siparis_stok_combobox and all_stock_codes:
-             root.after(0, lambda: siparis_stok_combobox.config(values=all_stock_codes))
+             root.after(0, lambda: siparis_stok_combobox.configure(values=all_stock_codes))
 
         if negotiator_combobox:
-             root.after(0, lambda: negotiator_combobox.config(values=sorted(sonuc_main[ted_col].unique())))
+             root.after(0, lambda: negotiator_combobox.configure(values=sorted(sonuc_main[ted_col].unique())))
 
         update_ai_comment_tab(mesaj, sonuc_main.sort_values("Skor", ascending=False).head(7))
         
         root.after(0, lambda: show_page("Yönetim Paneli"))
         root.after(0, lambda: messagebox.showinfo("Tamam", "Analiz bitti."))
-        root.after(0, lambda: ai_status_label.config(text="Hazır."))
+        root.after(0, lambda: ai_status_label.configure(text="Hazır."))
         
     except Exception as e:
         root.after(0, lambda: messagebox.showerror("Hata", str(e)))
-        root.after(0, lambda: ai_status_label.config(text="Hata"))
+        root.after(0, lambda: ai_status_label.configure(text="Hata"))
     finally:
         root.after(0, stop_loading_gif)
 
@@ -4589,9 +5073,9 @@ def update_listbox(items):
     supplier_listbox.delete(0, tk.END); [supplier_listbox.insert(tk.END, i) for i in items]
 
 def update_weights(val=None):
-    price_label.config(text=f"Fiyat: {price_weight.get():.2f}")
-    delivery_label.config(text=f"Teslim: {delivery_weight.get():.2f}")
-    return_label.config(text=f"İade: {return_weight.get():.2f}")
+    price_label.configure(text=f"Fiyat: {price_weight.get():.2f}")
+    delivery_label.configure(text=f"Teslim: {delivery_weight.get():.2f}")
+    return_label.configure(text=f"İade: {return_weight.get():.2f}")
 
 def save_outliers_to_excel():
     if outliers_global is None or outliers_global.empty:
@@ -4622,8 +5106,8 @@ def start_monitoring():
         observer.schedule(event_handler, monitoring_folder, recursive=False)
         observer.start()
         try:
-            start_button.config(state="disabled")
-            stop_button.config(state="normal")
+            start_button.configure(state="disabled")
+            stop_button.configure(state="normal")
         except: pass
 
 def stop_monitoring():
@@ -4633,8 +5117,8 @@ def stop_monitoring():
         observer.join()
         set_status("Klasör izleme durduruldu.")
         try:
-            start_button.config(state="normal")
-            stop_button.config(state="disabled")
+            start_button.configure(state="normal")
+            stop_button.configure(state="disabled")
         except: pass
 
 def dosyaları_sec():
@@ -4651,7 +5135,7 @@ def dosyaları_sec():
                 all_stock_codes = ["Tüm Veri"] + list(unique_kodlar)
                 stok_kod_combobox['values'] = all_stock_codes
                 stok_kod_combobox.set("Tüm Veri")
-                stok_kod_combobox.config(state="normal")
+                stok_kod_combobox.configure(state="normal")
         except:
             pass
 
@@ -4710,6 +5194,11 @@ def show_page(page_name):
         # Trend Avcısı initialization on demand
         if page_name == "Trend Avcısı":
             init_trend_hunter_tab()
+        # Yeni Modüller initialization on demand
+        elif page_name == "Üretim Takibi":
+            init_production_pipeline_tab()
+        elif page_name == "Hammadde Fiyatları":
+            init_commodity_intelligence_tab()
         # Reklamasyon pages initialization on demand
         elif page_name == "Rek Yönetici Özeti":
             draw_rek_dashboard(frame_rek_ozet)
@@ -4718,12 +5207,16 @@ def show_page(page_name):
         
     for btn_name, btn in menu_buttons.items():
         if btn_name == page_name:
-            btn.config(bg="#34495e", fg="#3498db", relief="sunken") 
+            btn.configure(fg_color=("#3498db", "#3498db"), text_color="white")
         else:
-            btn.config(bg="#2c3e50", fg="white", relief="flat") 
+            btn.configure(fg_color="transparent", text_color=("white", "white")) 
 
-root = ThemedTk(theme="radiance")
-root.title("Tedarikçi Rapor Analiz v2.7 (Modern UI & Smart Order)")
+# Set CustomTkinter appearance mode and color theme
+ctk.set_appearance_mode("dark")  # Modes: "System" (default), "Dark", "Light"
+ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "green", "dark-blue"
+
+root = ctk.CTk()
+root.title("Tedarikçi Rapor Analiz v2.8 (Production Pipeline & Commodity Intelligence)")
 root.geometry("1280x850")
 # Ayarlar değişkenleri global olarak tanımlanır
 price_weight = tk.DoubleVar(value=0.4)
@@ -4735,19 +5228,19 @@ style = ttk.Style()
 style.configure("AI.Horizontal.TProgressbar", foreground='#4CAF50', background='#E8F5E9')
 
 # --- CANLI TICKER ŞERİDİ (EN ÜSTTE) ---
-ticker_frame = tk.Frame(root, bg="#2c3e50", height=30)
+ticker_frame = ctk.CTkFrame(root, height=30, corner_radius=0)
 ticker_frame.pack(side="top", fill="x")
-ticker_label = tk.Label(ticker_frame, text="Piyasa verileri yükleniyor...", font=("Consolas", 10, "bold"), fg="#2ecc71", bg="#2c3e50")
+ticker_label = ctk.CTkLabel(ticker_frame, text="Piyasa verileri yükleniyor...", font=("Consolas", 10, "bold"), text_color="#2ecc71")
 ticker_label.pack(side="left", padx=10)
 # Ticker'ı Başlat
 update_market_ticker()
 scroll_ticker_animation()
 
-sidebar = tk.Frame(root, bg="#2c3e50", width=250)
+sidebar = ctk.CTkFrame(root, width=250, corner_radius=0)
 sidebar.pack(side="left", fill="y")
 sidebar.pack_propagate(False) 
 
-tk.Label(sidebar, text="Tedarikçi\nAnaliz Sistemi", bg="#2c3e50", fg="white", font=("Segoe UI", 16, "bold"), pady=20).pack(fill="x")
+ctk.CTkLabel(sidebar, text="Tedarikçi\nAnaliz Sistemi", font=("Segoe UI", 16, "bold")).pack(fill="x", pady=20)
 
 # --- KAYDIRILABİLİR SOL MENÜ (SCROLLABLE SIDEBAR) ---
 # Scrollbar'ı önce tanımlayıp sağa yaslıyoruz, böylece her zaman görünür alanda kalıyor.
@@ -4757,9 +5250,9 @@ sidebar_scrollbar.pack(side="right", fill="y")
 sidebar_canvas = tk.Canvas(sidebar, bg="#2c3e50", highlightthickness=0, yscrollcommand=sidebar_scrollbar.set)
 sidebar_canvas.pack(side="left", fill="both", expand=True)
 
-sidebar_scrollbar.config(command=sidebar_canvas.yview)
+sidebar_scrollbar.configure(command=sidebar_canvas.yview)
 
-sidebar_content_frame = tk.Frame(sidebar_canvas, bg="#2c3e50")
+sidebar_content_frame = ctk.CTkFrame(sidebar_canvas, fg_color="transparent")
 
 sidebar_content_frame.bind(
     "<Configure>",
@@ -4783,7 +5276,7 @@ def on_mousewheel(event):
 sidebar_canvas.bind("<Enter>", lambda _: sidebar_canvas.bind_all("<MouseWheel>", on_mousewheel))
 sidebar_canvas.bind("<Leave>", lambda _: sidebar_canvas.unbind_all("<MouseWheel>"))
 
-content_area = tk.Frame(root, bg="#ecf0f1")
+content_area = ctk.CTkFrame(root, corner_radius=0)
 content_area.pack(side="right", fill="both", expand=True)
 
 frame_ozet = ttk.Frame(content_area)
@@ -4802,6 +5295,10 @@ frame_ai = ttk.Frame(content_area, padding="10")
 frame_negotiator = ttk.Frame(content_area, padding="10") 
 frame_haberler = ttk.Frame(content_area, padding="10") # YENİ FRAME
 frame_trend_hunter = ttk.Frame(content_area, padding="10") # TREND AVCISI FRAME
+
+# Yeni Modüller
+frame_production_pipeline = ttk.Frame(content_area, padding="10")  # Üretim Takibi GANT
+frame_commodity_intel = ttk.Frame(content_area, padding="10")  # Hammadde Fiyat İstihbaratı
 
 # Reklamasyon Yönetimi Frames
 frame_rek_main = ttk.Frame(content_area, padding="10")
@@ -4828,6 +5325,9 @@ frames = {
     "Ayarlar": frame_ayarlar, # Artık kullanılmıyor ama referans hatası olmaması için tutuldu
     "Sektör Haberleri": frame_haberler, # YENİ FRAME
     "Trend Avcısı": frame_trend_hunter, # TREND HUNTER
+    # Yeni Modüller
+    "Üretim Takibi": frame_production_pipeline,  # Sipariş Aşama Takibi
+    "Hammadde Fiyatları": frame_commodity_intel,  # Hammadde Fiyat İstihbaratı
     # Reklamasyon Yönetimi
     "Reklamasyon Yönetimi": frame_rek_main,
     "Rek Yönetici Özeti": frame_rek_ozet,
@@ -4845,6 +5345,8 @@ menu_items = [
     ("📰 Sektör Haberleri", "Sektör Haberleri"), # YENİ BUTON
     ("🔮 Trend Avcısı", "Trend Avcısı"), # TREND HUNTER
     ("🏭 Reklamasyon Yönetimi", "Reklamasyon Yönetimi"), # YENİ BUTON
+    ("📅 Üretim Takibi", "Üretim Takibi"),  # YENİ: Sipariş Aşama Takibi - GANT
+    ("💹 Hammadde Fiyatları", "Hammadde Fiyatları"),  # YENİ: Hammadde Fiyat İstihbaratı
     ("📝 Tedarikçi Karnesi", "Tedarikçi Karnesi"),
     ("📈 Aylık Trend", "Aylık Trend"),
     ("🔮 Gelecek Tahmini", "Gelecek Tahmini"),
@@ -4857,14 +5359,15 @@ menu_items = [
 ]
 
 for text, name in menu_items:
-    btn = tk.Button(sidebar_content_frame, text=text, font=("Segoe UI", 11), bg="#2c3e50", fg="white", 
-                    activebackground="#34495e", activeforeground="white", bd=0, 
-                    cursor="hand2", anchor="w", padx=20, pady=10,
-                    command=lambda n=name: show_page(n))
-    btn.pack(fill="x", pady=2)
+    btn = ctk.CTkButton(sidebar_content_frame, text=text, font=("Segoe UI", 11), 
+                        corner_radius=6, anchor="w", 
+                        command=lambda n=name: show_page(n),
+                        fg_color="transparent", hover_color=("#34495e", "#34495e"),
+                        text_color=("white", "white"))
+    btn.pack(fill="x", pady=2, padx=5)
     menu_buttons[name] = btn
 
-tk.Label(sidebar_content_frame, text="v2.7 | DeFacto", bg="#2c3e50", fg="#95a5a6", font=("Arial", 8)).pack(side="bottom", pady=10)
+ctk.CTkLabel(sidebar_content_frame, text="v2.8 | DeFacto", font=("Arial", 8), text_color="#95a5a6").pack(side="bottom", pady=10)
 
 status_label = ttk.Label(content_area, text="Hazır", relief="sunken", anchor="w")
 status_label.pack(side="bottom", fill="x")
