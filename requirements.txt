@@ -1,0 +1,41 @@
+# Core UI Framework
+customtkinter>=5.2.0
+tkinter  # Built-in with Python
+
+# Themed widgets (optional, for backward compatibility)
+# ttkthemes>=3.2.2
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualization
+matplotlib>=3.7.0
+
+# API and Web
+requests>=2.31.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# Document Generation
+fpdf>=1.7.2
+python-docx>=0.8.11
+
+# Fuzzy Matching
+rapidfuzz>=3.0.0
+
+# File System Monitoring
+watchdog>=3.0.0
+
+# Forecasting (optional)
+# prophet>=1.1.4
+
+# Trend Analysis (optional)
+# pytrends>=4.9.0
+
+# Map Visualization (optional)
+# tkintermapview>=1.29
+
+# Scheduling
+schedule>=1.2.0

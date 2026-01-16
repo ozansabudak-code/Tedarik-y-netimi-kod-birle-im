@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application specific
+*.log
+activity_logs_*.json
+system_log_*.log
+app_settings.json
+temp_chart.png
+rapor.xlsx
+yorum.pdf
+Dashboard_Data_*.xlsx
+Dashboard_Report_*.pdf
+Detayli_Liste_*.xlsx
+Detayli_Rapor_*.pdf
+Export_*.xlsx
+Export_*.pdf
+Ozet_*.pdf
+Yonetici_Ozeti_*.xlsx
+Yonetici_Raporu_*.pdf
+kumas_verileri.xlsx
